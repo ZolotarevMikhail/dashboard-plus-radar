@@ -1,0 +1,55 @@
+{
+ "срез": "2026-10-26",
+ "период": "2026-09-27 — 2026-10-24",
+ "примечание": "имитационные данные для демо",
+ "отчёты": [
+  {
+   "reportType": 1,
+   "dateFrom": "2026-09-27",
+   "dateTo": "2026-10-03",
+   "retailAmountSum": 2440014,
+   "forPaySum": 2061812,
+   "deliveryServiceSum": 29280,
+   "paidStorageSum": 1069,
+   "paidAcceptanceSum": 243,
+   "deductionSum": 0,
+   "penaltySum": 0
+  },
+  {
+   "reportType": 1,
+   "dateFrom": "2026-10-04",
+   "dateTo": "2026-10-10",
+   "retailAmountSum": 2514702,
+   "forPaySum": 2124924,
+   "deliveryServiceSum": 30176,
+   "paidStorageSum": 1092,
+   "paidAcceptanceSum": 438,
+   "deductionSum": 0,
+   "penaltySum": 0
+  },
+  {
+   "reportType": 1,
+   "dateFrom": "2026-10-11",
+   "dateTo": "2026-10-17",
+   "retailAmountSum": 2486402,
+   "forPaySum": 2101010,
+   "deliveryServiceSum": 29836,
+   "paidStorageSum": 1028,
+   "paidAcceptanceSum": 724,
+   "deductionSum": 0,
+   "penaltySum": 0
+  },
+  {
+   "reportType": 1,
+   "dateFrom": "2026-10-18",
+   "dateTo": "2026-10-24",
+   "retailAmountSum": 2528329,
+   "forPaySum": 2136439,
+   "deliveryServiceSum": 30339,
+   "paidStorageSum": 348,
+   "paidAcceptanceSum": 302,
+   "deductionSum": 0,
+   "penaltySum": 0
+  }
+ ]
+}

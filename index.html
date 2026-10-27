@@ -1,0 +1,2417 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- запрет кэширования для Safari (упорно кэширует localhost) -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Анализ продаж на Wildberries</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📊</text></svg>">
+<style>
+/* ===== Палитра (светлая) ===== */
+:root{
+  color-scheme: light;
+  --surface-1:#ffffff; --surface-2:#f9f9f9; --page:#f9f9f9;
+  --ink-1:#151515; --ink-2:#555555; --ink-3:#888888;
+  --grid:#eeeeee; --axis:#cccccc; --ring:#e0e0e0;
+  --card:#ffffff;
+  --accent:#fbcf02;            /* фирменный жёлтый акцент */
+  --series-1:#151515; --series-2:#fbcf02; --series-3:#2e7d32; --series-4:#2188bc;
+  --series-5:#888888; --series-6:#0088cc; --series-7:#78e026; --series-8:#d03b3b;
+  --good:#2e7d32; --warn:#e8a300; --serious:#ec835a; --crit:#d03b3b;
+  --good-ink:#2e7d32;
+  --shadow:0 1px 2px rgba(21,21,21,.06);
+}
+/* ===== Тёмная тема (по системному предпочтению) ===== */
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme:dark;
+    --surface-1:#1f1f1f; --surface-2:#151515; --page:#151515;
+    --ink-1:#ffffff; --ink-2:#bdbdbd; --ink-3:#888888;
+    --grid:#2a2a2a; --axis:#3a3a3a; --ring:#333333;
+    --card:#1f1f1f;
+    --accent:#fbcf02;
+    --series-1:#d4d4d4; --series-2:#fbcf02; --series-3:#78e026; --series-4:#3a9fd4;
+    --series-5:#888888; --series-6:#3a9fd4; --series-7:#78e026; --series-8:#ff6b6b;
+    --good:#78e026; --warn:#fbcf02; --serious:#ec835a; --crit:#ff6b6b;
+    --good-ink:#78e026;
+    --shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+}
+/* ===== Тёмная тема (явный переключатель) ===== */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --surface-1:#1f1f1f; --surface-2:#151515; --page:#151515;
+  --ink-1:#ffffff; --ink-2:#bdbdbd; --ink-3:#888888;
+  --grid:#2a2a2a; --axis:#3a3a3a; --ring:#333333;
+  --card:#1f1f1f;
+  --accent:#fbcf02;
+  --series-1:#d4d4d4; --series-2:#fbcf02; --series-3:#78e026; --series-4:#3a9fd4;
+  --series-5:#888888; --series-6:#3a9fd4; --series-7:#78e026; --series-8:#ff6b6b;
+  --good:#78e026; --warn:#fbcf02; --serious:#ec835a; --crit:#ff6b6b;
+  --good-ink:#78e026;
+  --shadow:0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+img{max-width:100%;height:auto} /* страховка: любые будущие картинки не вылезут за блок */
+html,body{margin:0;padding:0}
+body{
+  background:var(--page); color:var(--ink-1);
+  font:15px/1.5 Montserrat,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:none;margin:0;padding:20px 28px 60px;width:100%}
+body{background:var(--page)}
+@media(min-width:1800px){.wrap{padding-inline:40px}}
+@media(min-width:2400px){.wrap{padding-inline:64px}}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+header h1{font-size:22px;font-weight:800;margin:0;color:var(--ink-1);letter-spacing:-.01em}
+header .spacer{margin-left:auto}
+.muted{color:var(--ink-2);font-size:12.5px}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* Кнопки */
+.btn{
+  background:var(--card); color:var(--ink-1); border:1px solid var(--ring);
+  padding:7px 13px; border-radius:4px; font:inherit; font-size:13px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.btn:hover{border-color:var(--axis)}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent); color:#151515; border:1.5px solid #151515; font-weight:700; box-shadow:0 2px 0 #151515, 0 4px 14px rgba(251,207,2,.45); padding:8px 16px; font-size:13.5px}
+.btn-primary:hover{background:#ffd60a; box-shadow:0 2px 0 #151515, 0 6px 18px rgba(251,207,2,.6)}
+.btn-primary[disabled]{opacity:.45;cursor:not-allowed}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--ink-2)}
+.icon-btn{background:var(--card);border:1px solid var(--ring);border-radius:4px;width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink-1)}
+.icon-btn:hover{border-color:var(--axis)}
+.badge{font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(21,21,21,.06);color:var(--ink-2)}
+:root[data-theme="dark"] .badge{background:rgba(255,255,255,.08)}
+
+/* Фильтры */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0;background:var(--card);border:1px solid var(--ring);border-radius:6px;padding:10px 12px;box-shadow:var(--shadow)}
+.seg{display:inline-flex;background:rgba(21,21,21,.05);border-radius:4px;padding:2px}
+:root[data-theme="dark"] .seg{background:rgba(255,255,255,.06)}
+.seg button{border:0;background:transparent;color:var(--ink-2);padding:5px 11px;border-radius:3px;font:inherit;font-size:13px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#151515;font-weight:600;box-shadow:none}
+
+/* ===== Переключатель разделов «Продажи / Радар цен» ===== */
+.view-nav{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
+.view-tab{font:inherit;font-size:13.5px;padding:9px 18px;border-radius:8px;border:1.5px solid var(--ink-1);
+  background:var(--card);color:var(--ink-1);cursor:pointer;min-height:44px;font-weight:600}
+.view-tab[aria-selected="false"]{border-color:var(--ring);color:var(--ink-2);font-weight:500}
+.view-tab[aria-selected="true"]{background:var(--accent);border-color:var(--ink-1)}
+body[data-view="radar"] .sales-only{display:none}
+body[data-view="sales"] .radar-only{display:none}
+/* панель фильтров на вкладке «Радар цен» */
+.radar-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0 10px}
+.radar-tools .seg{border:1px solid var(--ring);border-radius:6px;background:var(--card);padding:2px}
+.radar-tools input[type=search]{flex:1;min-width:170px;padding:7px 10px;border:1px solid var(--ring);
+  border-radius:6px;background:var(--card);color:var(--ink-1);font:inherit;font-size:13px}
+.filters input[type=date]{padding:5px 8px;border:1px solid var(--ring);border-radius:4px;background:var(--card);color:var(--ink-1);font:inherit;font-size:13px}
+.filters .lab{font-size:12.5px;color:var(--ink-3);margin-right:-4px}
+.filters .sel{padding:5px 8px;border:1px solid var(--ring);border-radius:4px;background:var(--card);color:var(--ink-1);font:inherit;font-size:13px;cursor:pointer}
+.filters .sel:hover{border-color:var(--axis)}
+/* ===== Иерархический выбор товара: Все товары → группа (тип) → артикул ===== */
+.goodpicker{position:relative;display:inline-block}
+.goodpicker .good-btn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;max-width:min(340px,72vw);padding:5px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.goodpicker .good-caret{font-size:11px;color:var(--ink-3)}
+.good-menu{position:absolute;top:calc(100% + 4px);left:0;min-width:290px;max-width:min(400px,92vw);max-height:56vh;overflow:auto;background:var(--card);border:1px solid var(--ring);border-radius:10px;box-shadow:0 10px 28px rgba(21,21,21,.16);z-index:70;padding:6px}
+.good-menu button{width:100%;border:0;background:none;color:var(--ink-1);font:inherit;border-radius:8px;cursor:pointer;text-align:left}
+.good-all{display:flex;align-items:center;padding:8px 10px;font-weight:600}
+.good-group-row{display:flex;align-items:center;gap:7px;padding:8px 10px;font-weight:600}
+.good-group-row .good-cnt{margin-left:auto;font-weight:400}
+.good-item{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:13.5px}
+.good-item .good-cnt{margin-left:auto}
+.good-cnt{color:var(--ink-3);font-size:12px}
+.good-on,.good-item.sel-on{background:var(--accent);font-weight:700}
+.good-arrow{display:inline-block;width:1em;transition:transform .15s}
+.good-group-row.open .good-arrow{transform:rotate(90deg)}
+.good-items{display:none;margin:0 4px 4px 22px;border-left:1px solid var(--grid);padding-left:2px}
+.good-items.open{display:block}
+.good-menu :is(.good-all,.good-group-row,.good-item):hover{background:var(--surface-2)}
+
+/* KPI */
+/* плиток стало 10 — сетка 5×2, на широких экранах два ровных ряда */
+.kpi{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:14px 0}
+@media(min-width:1700px){.kpi{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}}
+@media(max-width:1380px){.kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1180px){.kpi{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--card);border:1px solid var(--ring);border-radius:6px;padding:13px 14px;box-shadow:var(--shadow)}
+.tile .lab{font-size:13px;color:var(--ink-1);font-weight:500;display:flex;align-items:center;gap:6px}
+.tile .val{font-size:26px;font-weight:700;margin-top:5px;letter-spacing:-.01em}
+.tile .sub{font-size:12.5px;color:var(--ink-2);font-weight:500;margin-top:3px}
+.delta{font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:3px}
+.delta.up{color:var(--good-ink)} .delta.down{color:var(--crit)} .delta.flat{color:var(--ink-3)}
+
+/* Графики */
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:10px;margin:10px 0}
+/* На ноутбуках со средним окном (≥920px) держим 2 колонки. На 920 и ниже — стек 1 колонка. */
+@media(max-width:920px){.grid2{grid-template-columns:1fr}}
+.grid3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:10px;margin:10px 0}
+@media(max-width:1180px){.grid3{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}}
+@media(max-width:560px){.grid3{grid-template-columns:minmax(0,1fr)}}
+.pie-wrap{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.pie-wrap svg{flex:0 0 auto;max-width:200px}
+/* minmax(0,1fr) и min-width:0 у li: без этого длинное слово в строке легенды
+   раздувает колонку сетки и легенда вылезает за экран на телефоне */
+.pie-legend{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;font-size:13px;font-weight:500;color:var(--ink-1);flex:1;min-width:140px}
+.pie-legend li{display:flex;align-items:center;gap:7px;min-width:0}
+.pie-legend i{width:11px;height:11px;border-radius:2px;flex:0 0 auto}
+.pie-legend .pc{margin-left:auto;color:var(--ink-3);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.pie-center{fill:var(--ink-1);font-size:14px;font-weight:700;text-anchor:middle}
+.pie-center-sub{fill:var(--ink-2);font-size:11px;text-anchor:middle;font-weight:600}
+.card{background:var(--card);border:1px solid var(--ring);border-radius:6px;padding:14px 14px 8px;box-shadow:var(--shadow)}
+.card h2{font-size:15.5px;font-weight:700;margin:0 0 2px;display:flex;align-items:center;gap:8px;color:var(--ink-1)}
+.card .desc{font-size:12.5px;color:var(--ink-2);font-weight:500;margin-bottom:8px}
+.metric-pick{display:inline-flex;background:rgba(21,21,21,.05);border-radius:4px;padding:2px;margin-left:auto}
+:root[data-theme="dark"] .metric-pick{background:rgba(255,255,255,.06)}
+.metric-pick button{border:0;background:transparent;color:var(--ink-2);padding:3px 8px;border-radius:3px;font:inherit;font-size:11.5px;cursor:pointer}
+.metric-pick button[aria-pressed="true"]{background:var(--accent);color:#151515;font-weight:600;box-shadow:none}
+.card-head{display:flex;align-items:center;margin-bottom:8px;gap:6px;flex-wrap:wrap}
+svg{display:block;width:100%;height:auto;max-width:100%}
+/* Столбцовые графики: ограничиваем максимальную высоту, чтобы на узких экранах
+   бары не превращались в блин, но не через aspect-ratio (он обрезает края) */
+#dynChart,#adsChart{max-height:260px;min-height:140px}
+.chart-wrap{overflow-x:visible}
+.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;position:relative}
+.tbl-scroll::after{content:"";position:sticky;right:0;top:0;bottom:0;width:24px;pointer-events:none;background:linear-gradient(to right,rgba(255,255,255,0),var(--card) 80%);opacity:0;transition:opacity .15s}
+:root[data-theme="dark"] .tbl-scroll::after{background:linear-gradient(to right,rgba(31,31,31,0),var(--card) 80%)}
+.tbl-scroll.has-overflow-x::after{opacity:1}
+.tbl-scroll table{min-width:680px}
+.tbl-scroll th:first-child,.tbl-scroll td:first-child{position:sticky;left:0;background:var(--card);z-index:2;box-shadow:1px 0 0 var(--grid)}
+.tbl-scroll th:first-child{z-index:3}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-1);font-weight:500;margin-top:2px;padding-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* Таблица */
+.tbl-card{margin-top:10px}
+.tbl-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{padding:7px 8px;text-align:left;white-space:nowrap}
+th{color:var(--ink-1);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--ring);position:sticky;top:0;background:var(--card)}
+td{border-bottom:1px solid var(--grid)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.center,th.center{text-align:center}
+.warn-num{color:var(--warn);font-weight:600}
+tbody tr{transition:background-color .12s}
+tbody tr:hover{background:rgba(21,21,21,.04)}
+:root[data-theme="dark"] tbody tr:hover{background:rgba(255,255,255,.06)}
+td{border-bottom:1px solid var(--grid)}
+tbody tr:last-child td{border-bottom:0}
+.profit-pos{color:var(--good-ink)} .profit-neg{color:var(--crit)}
+.roi-pill{font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(21,21,21,.06);color:var(--ink-1);font-weight:600;font-variant-numeric:tabular-nums}
+:root[data-theme="dark"] .roi-pill{background:rgba(255,255,255,.08)}
+.roi-pill.bad{background:rgba(208,59,59,.16);color:var(--crit);font-weight:700}
+.roi-pill.warn{background:rgba(232,163,0,.16);color:var(--warn);font-weight:700}
+.roi-pill.good{background:rgba(12,163,12,.16);color:var(--good-ink);font-weight:700}
+.stock-low{color:var(--crit);font-weight:600}
+input.cost{width:78px;padding:3px 6px;border:1px solid var(--ring);border-radius:6px;background:var(--card);color:var(--ink-1);font:inherit;font-size:12px;text-align:right}
+input.cost:focus{border-color:var(--series-1);outline:none}
+.bar-cell{position:relative;min-width:90px}
+.bar-cell i{display:block;height:7px;border-radius:3px;background:var(--series-1);margin-top:3px}
+.bar-cell i.neg{background:var(--crit)}
+
+/* SVG tooltip */
+.tooltip{position:fixed;pointer-events:none;background:var(--ink-1);color:var(--card);padding:6px 9px;border-radius:6px;font-size:11.5px;z-index:50;white-space:nowrap;opacity:0;transition:opacity .12s;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+:root[data-theme="light"] .tooltip{background:#151515;color:#fff}
+.axis-text{fill:var(--ink-3);font-size:10.5px;font-family:inherit}
+.grid-line{stroke:var(--grid);stroke-width:1}
+.baseline{stroke:var(--axis);stroke-width:1}
+
+/* Диалог настроек */
+dialog{border:1px solid var(--ring);border-radius:8px;background:var(--card);color:var(--ink-1);padding:0;max-width:520px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+.dlg-head{padding:16px 18px;border-bottom:1px solid var(--ring);display:flex;align-items:center}
+.dlg-head h3{font-size:15px;margin:0}
+.dlg-body{padding:16px 18px}
+.dlg-body label{display:block;font-size:12.5px;color:var(--ink-2);margin:12px 0 4px}
+.dlg-body input[type=text],.dlg-body input[type=password]{width:100%;padding:8px 10px;border:1px solid var(--ring);border-radius:4px;background:var(--card);color:var(--ink-1);font:inherit;font-size:13px}
+.dlg-body .hint{font-size:11.5px;color:var(--ink-3);margin-top:5px;line-height:1.4}
+.dlg-foot{padding:12px 18px;border-top:1px solid var(--ring);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.note{font-size:11.5px;color:var(--ink-3);line-height:1.5}
+.danger{color:var(--crit)}
+.tag-ok{color:var(--good-ink);font-weight:600}
+details.acc{border-top:1px solid var(--ring);padding:12px 18px}
+details.acc summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
+details.acc .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+
+/* Табы в диалоге настроек */
+.dlg-tabs{display:flex;gap:2px;padding:8px 12px 0;border-bottom:1px solid var(--ring)}
+.dlg-tabs button{border:0;background:transparent;color:var(--ink-3);padding:8px 12px;font:inherit;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;border-radius:6px 6px 0 0}
+.dlg-tabs button[aria-selected="true"]{color:var(--ink-1);border-bottom-color:var(--series-1);font-weight:600}
+.dlg-tabs button:hover{color:var(--ink-1)}
+.dlg-tab{display:none}
+.dlg-tab.active{display:block}
+.dlg-sec{margin-top:16px}
+.dlg-sec h4{font-size:13px;margin:0 0 6px;color:var(--ink-1)}
+.cost-tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.cost-tbl th,.cost-tbl td{padding:5px 6px;text-align:left;border-bottom:1px solid var(--grid)}
+.cost-tbl th{color:var(--ink-3);font-weight:500;font-size:11px}
+.cost-tbl td input,.cost-tbl td select{width:100%;padding:4px 6px;border:1px solid var(--ring);border-radius:6px;background:var(--card);color:var(--ink-1);font:inherit;font-size:12px}
+.cost-tbl td.num{text-align:right}
+.cost-tbl-wrap{max-height:300px;overflow-y:auto;border:1px solid var(--ring);border-radius:4px;margin-top:4px}
+
+/* Тост */
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink-1);color:var(--card);padding:9px 16px;border-radius:4px;font-size:13px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.3);opacity:0;transition:opacity .2s,bottom .2s}
+:root[data-theme="light"] .toast{background:#151515;color:#fff}
+.toast.show{opacity:1;bottom:26px}
+.toast.err{background:var(--crit);color:#fff}
+
+.empty{padding:30px;text-align:center;color:var(--ink-3);font-size:13px}
+small.tag-demo{font-size:10.5px;color:var(--ink-3);background:rgba(21,21,21,.05);padding:1px 7px;border-radius:4px;margin-left:6px}
+:root[data-theme="dark"] small.tag-demo{background:rgba(255,255,255,.07)}
+
+/* Блок «Выводы» */
+.insights{margin:14px 0}
+.insights .card-head{margin-bottom:10px}
+.insights-list{list-style:none;padding:0;margin:0;display:grid;gap:7px}
+.insights-list li{position:relative;padding:7px 9px 7px 26px;border-radius:4px;background:rgba(21,21,21,.035);font-size:13.5px;line-height:1.5}
+:root[data-theme="dark"] .insights-list li{background:rgba(255,255,255,.045)}
+.insights-list li::before{content:"";position:absolute;left:9px;top:11px;width:9px;height:9px;border-radius:50%}
+.insights-list li.good::before{background:var(--good-ink)}
+.insights-list li.bad{background:rgba(208,59,59,.06)}
+:root[data-theme="dark"] .insights-list li.bad{background:rgba(255,107,107,.08)}
+.insights-list li.bad::before{background:var(--crit)}
+.insights-list li.warn{background:rgba(232,163,0,.08)}
+:root[data-theme="dark"] .insights-list li.warn{background:rgba(232,163,0,.12)}
+.insights-list li.warn::before{background:var(--warn)}
+.insights-list li.info::before{background:var(--series-2)}
+.insights-list li b{font-weight:600}
+@media(max-width:560px){.insights-list{grid-template-columns:1fr}}
+/* ABC-анализ и рекомендации (этап 2): бейджи классов и строка-объяснение под рекомендацией */
+.abc-badge{display:inline-block;min-width:26px;text-align:center;font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;font-variant-numeric:tabular-nums}
+.abc-badge.a{background:rgba(12,163,12,.16);color:var(--good-ink)}
+.abc-badge.b{background:rgba(232,163,0,.16);color:var(--warn)}
+.abc-badge.c{background:rgba(21,21,21,.07);color:var(--ink-2)}
+:root[data-theme="dark"] .abc-badge.c{background:rgba(255,255,255,.09)}
+.why{display:block;font-size:12px;color:var(--ink-2);margin-top:4px;line-height:1.45}
+.abc-note{margin:8px 2px 0;font-size:12px;min-height:4px}
+
+/* Адаптивность таблицы товаров: прячем менее важные колонки на узких экранах */
+@media(max-width:920px){
+  .tbl-hide-920{display:none}
+  .tbl-scroll table{min-width:520px}
+}
+@media(max-width:768px){
+  .tbl-hide-768{display:none}
+  .tbl-scroll table{min-width:480px}
+}
+@media(max-width:560px){
+  .tbl-hide-560{display:none}
+  .tbl-scroll table{min-width:380px}
+  th,td{padding:6px 6px;font-size:12.5px}
+}
+
+/* Адаптивность donut: сжимаем на узких экранах */
+@media(max-width:560px){
+  .pie-wrap svg{flex:0 0 auto;max-width:140px;width:140px;height:140px}
+  .pie-legend{font-size:12px}
+  .wrap{padding:16px 14px 40px}
+  header h1{font-size:18px}
+  .tile .val{font-size:18px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Анализ продаж на Wildberries</h1>
+  <small class="tag-demo" id="modeTag">демо-данные</small>
+  <span class="spacer"></span>
+  <span class="muted" id="lastSync"></span>
+  <button class="icon-btn" id="themeBtn" title="Тема"></button>
+  <button class="btn btn-primary" id="csvBtn" title="Импорт CSV">⤓ CSV</button>
+  <button class="icon-btn" id="settingsBtn" title="Настройки">⚙</button>
+</header>
+
+<nav class="view-nav" id="viewNav" aria-label="Разделы дашборда">
+  <button class="view-tab" data-view="sales" aria-selected="true">Продажи</button>
+  <button class="view-tab" data-view="radar" aria-selected="false">Радар цен</button>
+</nav>
+
+<div class="filters sales-only">
+  <span class="lab">Период:</span>
+  <span class="lab range-lab">с</span>
+  <input type="date" id="fromDate" class="range-date">
+  <span class="lab range-lab">по</span>
+  <input type="date" id="toDate" class="range-date">
+  <span class="lab">Товар:</span>
+  <div class="goodpicker" id="goodPicker">
+    <button type="button" class="sel good-btn" id="goodBtn" aria-haspopup="true" aria-expanded="false" title="Все товары → группа → конкретный артикул">
+      <span id="goodBtnText">Все товары</span> <span class="good-caret">▾</span>
+    </button>
+    <div class="good-menu" id="goodMenu" hidden></div>
+  </div>
+  <button class="btn btn-ghost" id="exportBtn" title="Выгрузить видимый срез в CSV">⬇ Экспорт CSV</button>
+  <span class="muted" id="rangeLabel"></span>
+</div>
+
+<section class="kpi sales-only" id="kpi"></section>
+
+<section class="card insights sales-only" id="gapsCard">
+  <div class="card-head"><h2>Срочные разрывы цен</h2><span class="muted" id="gapsSub"></span></div>
+  <ul id="gapsList" class="insights-list"></ul>
+  <div class="abc-note muted">Показаны только расхождения от 10% — полный разбор на вкладке «Радар цен» вверху страницы</div>
+</section>
+
+<section class="card insights sales-only" id="alertsCard">
+  <div class="card-head"><h2>Тревоги и доверие к цифрам</h2><span class="muted" id="alertsSub">штампы источников и проверки</span></div>
+  <ul id="alertsList" class="insights-list"></ul>
+</section>
+
+<section class="card insights sales-only" id="insights">
+  <div class="card-head"><h2>Выводы</h2><span class="muted" id="insightsSub">по текущему периоду</span></div>
+  <ul id="insightsList" class="insights-list"></ul>
+</section>
+
+<section class="card insights sales-only" id="abcCard">
+  <div class="card-head"><h2>ABC-анализ товаров</h2><span class="muted" id="abcSub"></span></div>
+  <div class="tbl-scroll">
+    <table id="abcTable">
+      <thead id="abcHead"></thead>
+      <tbody id="abcBody"></tbody>
+    </table>
+  </div>
+  <div class="abc-note muted" id="abcNote"></div>
+</section>
+
+<section class="card insights radar-only" id="priceCard">
+  <div class="card-head"><h2>Позиция по цене</h2><span class="muted" id="priceSub"></span></div>
+  <div class="radar-tools">
+    <div class="seg" id="radarSeg" role="group" aria-label="Фильтр по позиции">
+      <button aria-pressed="true" data-pos="all">Все</button>
+      <button aria-pressed="false" data-pos="expensive">Дороже медианы</button>
+      <button aria-pressed="false" data-pos="cheap">Дешевле медианы</button>
+      <button aria-pressed="false" data-pos="equal">Наравне</button>
+    </div>
+    <input type="search" id="radarSearch" placeholder="Найти товар по названию…" aria-label="Поиск по названию">
+    <button class="btn btn-ghost" id="radarSortBtn" title="Порядок строк">⇅ по разнице</button>
+  </div>
+  <div class="tbl-scroll">
+    <table id="priceTable">
+      <thead id="priceHead"></thead>
+      <tbody id="priceBody"></tbody>
+    </table>
+  </div>
+  <div class="abc-note muted" id="priceNote"></div>
+</section>
+
+<section class="card insights sales-only" id="recsCard">
+  <div class="card-head"><h2>Рекомендации v1</h2><span class="muted" id="recsSub">каждая — с расчётом «почему»</span></div>
+  <ul id="recsList" class="insights-list"></ul>
+</section>
+
+<div class="grid2 sales-only">
+  <div class="card">
+    <div class="card-head">
+      <h2>Динамика</h2>
+      <div class="metric-pick" id="metricPick">
+        <button aria-pressed="true" data-m="revenue">Выручка</button>
+        <button aria-pressed="false" data-m="orders">Заказы</button>
+        <button aria-pressed="false" data-m="profit">Прибыль</button>
+      </div>
+    </div>
+    <div class="desc" id="dynDesc"></div>
+    <div class="chart-wrap"><svg id="dynChart" height="220"></svg></div>
+  </div>
+  <div class="card">
+    <h2>Реклама</h2>
+    <div class="desc">Расходы на продвижение и заказы по периодам</div>
+    <div class="chart-wrap"><svg id="adsChart" height="220"></svg></div>
+  </div>
+</div>
+
+<div class="grid3 sales-only">
+  <div class="card">
+    <h2>Структура продаж по типам</h2>
+    <div class="desc">Доля выручки по группам товаров — за выбранный период</div>
+    <div class="pie-wrap">
+      <svg id="pieChart" width="180" height="180" viewBox="0 0 180 180"></svg>
+      <ul id="pieLegend" class="pie-legend"></ul>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Прибыль по товарам</h2>
+    <div class="desc">Кто зарабатывает, кто тянет вниз — за выбранный период</div>
+    <div class="chart-wrap"><svg id="profitChart" height="280"></svg></div>
+  </div>
+  <div class="card">
+    <h2>Остатки по товарам</h2>
+    <div class="desc">Суммарно по всем складам WB. Красным — что заканчивается</div>
+    <div class="chart-wrap"><svg id="stockChart" height="280"></svg></div>
+  </div>
+</div>
+
+<section class="card insights sales-only" id="reportsCard">
+  <div class="card-head"><h2>Отчёты реализации (точные финансы WB)</h2><span class="muted" id="reportsSub"></span></div>
+  <div class="tbl-scroll">
+    <table id="reportsTable">
+      <thead id="reportsHead"></thead>
+      <tbody id="reportsBody"></tbody>
+    </table>
+  </div>
+  <div class="abc-note muted" id="reportsNote"></div>
+</section>
+
+<div class="card tbl-card sales-only">
+  <div class="card-head">
+    <h2>Товары</h2>
+    <span class="muted" style="font-size:12px;margin-left:8px;display:inline-flex;align-items:center;gap:5px;background:rgba(251,207,2,.14);padding:3px 9px;border-radius:4px;color:var(--ink-1)"><span style="color:var(--accent)">✎</span> Себестоимость вводится в колонке «Себест.» и сохраняется в браузере</span>
+  </div>
+  <div class="tbl-scroll">
+    <table id="goodsTable">
+      <thead id="goodsHead"></thead>
+      <tbody id="goodsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<div class="tooltip" id="tt"></div>
+<div class="toast" id="toast"></div>
+
+<dialog id="settingsDlg">
+  <div class="dlg-head"><h3>Настройки</h3></div>
+  <div class="dlg-tabs" id="dlgTabs">
+    <button aria-selected="true" data-tab="tab-goods">Товары</button>
+    <button aria-selected="false" data-tab="tab-data">Данные</button>
+  </div>
+  <div class="dlg-body">
+    <!-- Вкладка: Товары (себестоимость + типы) -->
+    <div class="dlg-tab active" id="tab-goods">
+      <p class="note">Здесь задаются <b>себестоимость</b> (WB её не отдаёт) и <b>тип товара</b> для группировки. Значения сохраняются в браузере по артикулу.</p>
+      <div class="dlg-sec">
+        <h4>Себестоимость и типы товаров</h4>
+        <div class="cost-tbl-wrap">
+          <table class="cost-tbl" id="costTbl">
+            <thead><tr><th>Артикул</th><th>Название</th><th>Тип</th><th class="num">Себест./шт, ₽</th></tr></thead>
+            <tbody id="costBody"></tbody>
+          </table>
+        </div>
+        <div class="row" style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost danger" id="clearCostBtn" type="button">Очистить себестоимости</button>
+          <button class="btn btn-ghost" id="addTypeBtn" type="button">＋ Новый тип</button>
+        </div>
+
+        <div class="dlg-sec" style="margin-top:16px">
+          <h4>Массовый импорт себестоимости</h4>
+          <p class="hint">Для большого количества товаров удобнее загрузить CSV-файл (Файл → Сохранить как → CSV в Excel). Шаблон с примером: <a href="cost-template.csv" download="cost-template.csv">cost-template.csv</a>.</p>
+          <p class="hint">Колонки (любой порядок, лишние игнорируются): <code>vendorCode</code> (артикул WB), <code>nmId</code> (числовой ID карточки), <code>barcode</code> (EAN-13), <code>cost</code> (себестоимость за шт., ₽).</p>
+          <p class="hint">Сопоставление: сначала по <b>barcode</b>, затем по <b>nmId</b>, затем по <b>vendorCode</b>. Если ключ не найден — строка попадёт в отчёт «Не сопоставлено».</p>
+          <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn" id="importCostBtn" type="button">⤓ Загрузить CSV…</button>
+            <button class="btn btn-ghost" id="exportCostBtn" type="button">� Скачать текущие себестоимости</button>
+            <input type="file" id="importCostFile" accept=".csv,text/csv" style="display:none">
+          </div>
+          <div id="importReport" class="hint" style="margin-top:8px"></div>
+        </div>
+
+        <div class="hint" style="margin-top:8px">Для демо-товаров типы заданы заранее. При подключении к WB список товаров поменяется — задай типы под свои товары. «Новый тип» добавляет вариант в выпадающие списки.</div>
+      </div>
+    </div>
+    <!-- Вкладка: Данные -->
+    <div class="dlg-tab" id="tab-data">
+      <div class="dlg-sec">
+        <h4>Источник данных</h4>
+        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="loadApiBtn" type="button" title="Продажи-из-api.csv от ежедневной выгрузки">Загрузить выгрузку API</button>
+          <button class="btn" id="pickCsvBtn" type="button">Загрузить CSV-файл</button>
+          <button class="btn btn-ghost" id="sampleFillBtn" type="button">Загрузить демо (CSV)</button>
+        </div>
+        <p class="hint" style="margin-top:8px">«Загрузить выгрузку API» берёт продажи-из-api.csv из папки дашборда — её пишет ежедневная выгрузка по API (по включению компьютера). Работает, когда дашборд открыт с сервера. Честные предупреждения: комиссия в ней упрощённая (WB не гарантирует точность), рекламы и себестоимости в выгрузке нет. Точная комиссия — в блоке «Отчёты реализации» на странице: этот файл (data-api/отчёты-реализации.json) ежедневная выгрузка получает из финансового API WB сама.</p>
+        <p class="hint">CSV-файл нужен со столбцами: <code>date,article,qty,revenue,commission,returns,ad_spend,stock</code>; колонка <code>cost</code> (себестоимость за шт) заполняет прибыль. Названия колонок понимаются и в русских вариантах («Дата», «Артикул», «Выручка»…).</p>
+        <p class="hint">Загруженные данные сохраняются в браузере: после перезагрузки страницы дашборд покажет последнее, а не демо.</p>
+        <p class="hint">«Загрузить демо (CSV)» показывает дашборд на тренировочном примере (30 товаров, 2 недели, с себестоимостью) — удобно проверить, как всё работает.</p>
+      </div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <span class="muted">Настройки (себестоимость, типы) сохраняются сразу при вводе</span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn" id="dlgCancel">Закрыть</button>
+    <button class="btn btn-primary" id="dlgSave">Готово</button>
+  </div>
+</dialog>
+
+<input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+
+<script>
+"use strict";
+/* ============================================================
+   Анализ продаж на Wildberries — режим CSV.
+   Демо-данные внутри; данные клиент приходят CSV-файлом
+   (кнопка «⤓ CSV»). Себестоимость и типы — в localStorage.
+   ============================================================ */
+
+const $ = s => document.querySelector(s);
+const fmt = n => {
+  if(n==null||isNaN(n)) return '—';
+  const a=Math.abs(n);
+  if(a>=1e9) return (n/1e9).toFixed(1)+' млрд';
+  if(a>=1e6) return (n/1e6).toFixed(1)+' млн';
+  if(a>=1e4) return Math.round(n/1e3).toLocaleString('ru-RU')+' тыс';
+  return Math.round(n).toLocaleString('ru-RU');
+};
+const fmtR = n => (n==null||isNaN(n))?'—':fmt(n)+' ₽';
+const fmtN = n => (n==null||isNaN(n))?'—':Math.round(n).toLocaleString('ru-RU');
+const fmtPct = n => (n==null||isNaN(n))?'—':(n*100).toFixed(0)+'%';
+
+/* ---------- Состояние ---------- */
+let state = {
+  period:'custom',        // период всегда задаётся полями «с/по» (упрощение 27.10)
+  anchor:new Date(),      // оставлено для совместимости прежних вызовов
+  customFrom:null,        // arbitrary range: дата «от» (Date)
+  customTo:null,          // arbitrary range: дата «до» (Date, не включительно)
+  metric:'revenue',       // revenue|orders|profit
+  costs: JSON.parse(localStorage.getItem('wb_costs')||'{}'), // article -> себестоимость за шт
+  types: JSON.parse(localStorage.getItem('wb_types')||'{}'), // article -> тип товара (строка)
+  extraTypes: JSON.parse(localStorage.getItem('wb_extra_types')||'[]'), // дополнительные типы (массив строк)
+  artFilter:'all',         // 'all' или артикул конкретного товара (каскад тип→товар)
+  goods:[],                // товары [{nmId,article,name,price,cost}]
+  sourceName:null,         // имя последнего загруженного CSV-файла
+  lastIngest:null,         // контрольные цифры последнего файла {rows, revenue, qty}
+  daily:[],                // продажи по дням [{date, lines:[{article,qty,revenue,commission,returns,adSpend,orders,stock}]}]
+  stockByArticle:{},       // текущие остатки (сумма по складам) article->шт
+  source:'demo',           // demo|csv
+  snapshot:null,           // срез цен конкурентов из data-snapshot.json (строки радара)
+  apiSum:null,             // сводка из продажи-из-api.csv: Map дата→{art→{qty,rev,orders,ret,comm}}
+  apiStamp:null,           // штамп среза из остатки-последние.json (когда выгрузка была)
+  apiReports:null,         // точные финансы WB из отчётов реализации: {rows, retail, hold, ...}
+  cardSubjects:{},         // nmId -> предмет карточки WB (из data-api/карточки.json)
+  lastSync:null
+};
+
+/* ---------- Типы товаров ---------- */
+// Список типов можно менять под свои товары в Настройках.
+// Для демо заданы 3 группы спортивных товаров.
+const DEMO_TYPES = ['Силовые','Йога и растяжка','Аксессуары'];
+// Какой тип у демо-товара по умолчанию (по артикулу)
+const DEMO_ART_TYPE = {
+  'SP-01':'Силовые','SP-06':'Силовые','SP-08':'Силовые','SP-07':'Силовые','SP-10':'Силовые',
+  'SP-02':'Йога и растяжка','SP-03':'Йога и растяжка',
+  'SP-04':'Аксессуары','SP-05':'Аксессуары','SP-09':'Аксессуары',
+};
+// Все известные типы (объединение демо и тех, что ввёл пользователь)
+function allTypes(){
+  const set=new Set(DEMO_TYPES);
+  (state.extraTypes||[]).forEach(t=>{ if(t) set.add(t); });
+  Object.values(state.types).forEach(t=>{ if(t) set.add(t); });
+  return [...set];
+}
+// Тип товара: из введённых пользователем, иначе демо-привязка, иначе '' (без типа)
+function artType(article){
+  if(state.types[article]!=null && state.types[article]!=='') return state.types[article];
+  if(DEMO_ART_TYPE[article]) return DEMO_ART_TYPE[article];
+  return '';
+}
+
+/* ---------- Демо-товары (спортивные) ---------- */
+const DEMO_GOODS = [
+  {article:'SP-01', name:'Гантели разборные 2×5 кг', price:1490, cost:600, vol:1.0},
+  {article:'SP-02', name:'Коврик для йоги 6 мм',     price:990,  cost:350, vol:1.3},
+  {article:'SP-03', name:'Резинки фитнес набор',     price:690,  cost:180, vol:1.7},
+  {article:'SP-04', name:'Бутылка спортивная 750 мл',price:590, cost:150, vol:1.4},
+  {article:'SP-05', name:'Скакалка профессиональная',price:390, cost:110, vol:0.9},
+  {article:'SP-06', name:'Эспандер кистевой',        price:1290, cost:520, vol:0.6},
+  {article:'SP-07', name:'Ролик для пресса',          price:890,  cost:340, vol:0.8},
+  {article:'SP-08', name:'Перчатки тренажёрные',     price:690,  cost:220, vol:1.1},
+  {article:'SP-09', name:'Мяч массажный шипованный', price:490,  cost:160, vol:0.5},
+  {article:'SP-10', name:'Петли TRX для тренировок', price:1990, cost:820, vol:0.7},
+];
+// разные «успешности»: товар с низким vol + высокой себестоимостью → убыток
+
+/* Детерминированный псевдослучайный (стабильные демо-данные) */
+function lcg(seed){ return ()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }; }
+const rnd = lcg(20260118);
+
+function isoDate(d){ const x=new Date(d); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); }
+function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+
+/* Генерация демо-продаж по дням с 01.01.2026 по сегодня */
+function buildDemo(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const start = new Date(2026,0,1);
+  const daily=[];
+  const stockByArticle={};
+  // базовые остатки на складах
+  DEMO_GOODS.forEach(g=> stockByArticle[g.article]= 40+Math.floor(rnd()*160));
+  for(let d=new Date(start); d<=today; d=addDays(d,1)){
+    const dow=d.getDay(); const isWeekend=(dow===0||dow===6);
+    const dayOfMonth=d.getDate();
+    const month=d.getMonth();
+    // лёгкая сезонность: январь-февраль ниже, май-август выше
+    const season=[0.8,0.85,0.95,1.0,1.15,1.25,1.3,1.25,1.1,1.0,0.95,0.9][month]||1;
+    const lines=[];
+    DEMO_GOODS.forEach((g,i)=>{
+      let qty = g.vol*season*(isWeekend?0.7:1.0)* (0.6+rnd()*0.8);
+      qty = Math.max(0, Math.round(qty));
+      if(qty===0) return;
+      const revenue = qty*g.price*(0.9+rnd()*0.1);     // с учетом скидок
+      const commission = revenue*0.17;                 // ~17% комиссия WB
+      const returns = qty>0 && rnd()<0.08 ? 1 : 0;      // ~8% дней — 1 возврат
+      const adSpend = revenue*(0.04+rnd()*0.06)* (g.vol<0.7?1.6:1); // слабые товары — больше рекламы
+      const orders = qty;
+      lines.push({article:g.article, qty, revenue, commission, returns, adSpend, orders, stock:0});
+    });
+    daily.push({date:isoDate(d), lines});
+  }
+  // нарастающее уменьшение остатков
+  daily.forEach(day=> day.lines.forEach(l=>{ stockByArticle[l.article]=Math.max(0,(stockByArticle[l.article]||0)-l.qty); }));
+  // периодические «подвозы»
+  DEMO_GOODS.forEach(g=>{ stockByArticle[g.article]+= Math.floor(rnd()*60)+10; });
+  return {goods:DEMO_GOODS.map(g=>({...g})), daily, stockByArticle};
+}
+
+/* ---------- Периоды ---------- */
+function periodRange(){
+  // период — всегда произвольный диапазон: поля «с» и «по»
+  let f=new Date(state.customFrom||new Date()), t=new Date(state.customTo||new Date());
+  f.setHours(0,0,0,0); t.setHours(0,0,0,0);
+  t=addDays(t,1); // дата «по» — включительно
+  if(t<=f) t=addDays(f,1);
+  return {from:f,to:t};
+}
+function prevRange(){
+  // прошлый период той же длины перед текущим (для дельты «к предыдущему»)
+  const {from,to}=periodRange();
+  const len=Math.round((to-from)/86400000); // дней в диапазоне
+  return {from:addDays(from,-len), to:from};
+}
+/* Группировка внутри периода */
+function buckets(from, to){
+  // массив {label, from, to}: период задаётся только диапазоном —
+  // до 60 дней по дням, длиннее — по месяцам
+  const out=[];
+  const days=Math.round((new Date(to)-new Date(from))/86400000);
+  if(days<=60){
+    for(let d=new Date(from); d<new Date(to); d=addDays(d,1)){
+      out.push({label:isoDate(d).slice(5), from:isoDate(d), to:isoDate(addDays(d,1))});
+    }
+  } else {
+    // по месяцам
+    for(let m=new Date(from); m<new Date(to);){
+      const f=new Date(m); const t=new Date(f.getFullYear(),f.getMonth()+1,1);
+      const lab=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][f.getMonth()]+' '+String(f.getFullYear()).slice(2);
+      out.push({label:lab, from:isoDate(f), to:isoDate(t)});
+      m=t;
+    }
+  }
+  return out;
+}
+
+/* ---------- Агрегация ---------- */
+function aggPeriod(from, to){
+  // суммирует daily-строки в [from,to)
+  const byArt={};
+  // один иерархический фильтр: все товары → группа (тип) → артикул
+  state.goods.forEach(g=>{
+    const group=groupOf(g);
+    const passed = state.artFilter==='all'
+      || (String(state.artFilter).startsWith('type:')
+          ? group===state.artFilter.slice(5)
+          : String(g.article)===String(state.artFilter));
+    if(!passed) return;
+    byArt[g.article]={article:g.article,name:g.name,price:g.price,qty:0,revenue:0,commission:0,returns:0,adSpend:0,orders:0,stock:0};
+  });
+  state.daily.forEach(day=>{
+    if(day.date<isoDate(from)||day.date>=isoDate(to)) return;
+    day.lines.forEach(l=>{
+      const b=byArt[l.article]; if(!b) return;
+      b.qty+=l.qty; b.revenue+=l.revenue; b.commission+=l.commission;
+      b.returns+=l.returns; b.adSpend+=l.adSpend; b.orders+=l.orders;
+    });
+  });
+  // остатки — текущий срез (не за период)
+  Object.keys(byArt).forEach(a=> byArt[a].stock = state.stockByArticle[a]||0);
+  return Object.values(byArt);
+}
+function totals(rows){
+  const t={revenue:0,commission:0,returns:0,adSpend:0,orders:0,qty:0,profit:0,stock:0};
+  rows.forEach(r=>{
+    // себестоимость: из введённых значений, иначе демо-значение
+    const cost = state.costs[r.article]!=null ? state.costs[r.article] : findDemoCost(r.article);
+    const cogs = cost*r.qty;
+    // прибыль = выручка − комиссия WB − реклама − себестоимость
+    // (возвраты вычитаются из выручки на этапе сбора данных, здесь — отдельная плита)
+    r.profit = r.revenue - r.commission - r.adSpend - cogs;
+    t.revenue+=r.revenue; t.commission+=r.commission; t.returns+=r.returns;
+    t.adSpend+=r.adSpend; t.orders+=r.orders; t.qty+=r.qty; t.profit+=r.profit; t.stock+=r.stock;
+  });
+  t.roi = t.adSpend>0 ? (t.revenue/t.adSpend) : null;
+  t.margin = t.revenue>0 ? (t.profit/t.revenue) : null;
+  return t;
+}
+function findDemoCost(article){ const g=DEMO_GOODS.find(x=>x.article===article); return g?g.cost:0; }
+
+/* ---------- KPI ---------- */
+function renderKPI(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to); const t=totals(rows);
+  const p=prevRange();
+  const prevRows=aggPeriod(p.from,p.to); const pt=totals(prevRows);
+  const dlt=(cur,prev)=> prev>0 ? (cur-prev)/prev : null;
+  const dltN=(cur,prev)=> prev!==0 ? (cur-prev)/Math.abs(prev) : null;
+  const delta=(cur,prev)=>{
+    const d=dltN(cur,prev);
+    if(d==null) return `<span class="delta flat">—</span>`;
+    const cls=d>0.001?'up':d<-0.001?'down':'flat';
+    const sym=d>0.001?'▲':d<-0.001?'▼':'◆';
+    return `<span class="delta ${cls}">${sym} ${Math.abs(d*100).toFixed(0)}%</span> к прошлому периоду`;
+  };
+  const tiles=[
+    {lab:'Выручка', val:fmtR(t.revenue), sub:delta(t.revenue,pt.revenue)},
+    {lab:'Прибыль', val:`<span class="${t.profit>=0?'profit-pos':'profit-neg'}">${fmtR(t.profit)}</span>`, sub:delta(t.profit,pt.profit)},
+    {lab:'Заказы', val:fmtN(t.orders), sub:delta(t.orders,pt.orders)},
+    {lab:'Продажи, шт', val:fmtN(t.qty)+' шт', sub:delta(t.qty,pt.qty)},
+    {lab:'Выкуп', val:t.orders>0?fmtPct(Math.min(1,t.qty/t.orders)):'—', sub:'продано из заказанных'},
+    {lab:'ROI рекламы', val:t.roi!=null?t.roi.toFixed(2)+'×':'—', sub:t.adSpend>0?`на ${fmtR(t.adSpend)} расходов`:'расходов нет', cls:t.roi!=null&&t.roi<1?'profit-neg':''},
+    {lab:'Маржинальность', val:t.margin!=null?fmtPct(t.margin):'—', sub:'прибыль / выручка', cls:t.margin!=null&&t.margin<0?'profit-neg':''},
+    {lab:'ДРР', val:t.revenue>0?fmtPct(t.adSpend/t.revenue):'—', sub:'реклама / выручка', cls:((t.adSpend/t.revenue)>0.2)?'profit-neg':''},
+    {lab:'Остатки', val:fmtN(t.stock)+' шт', sub:'сумма по всем складам WB'},
+    {lab:'Возвраты', val:fmtN(t.returns)+' шт', sub:(t.returns+t.orders)>0?`доля ${fmtPct(t.returns/(t.returns+t.orders))} заказов`:'за период'},
+  ];
+  $('#kpi').innerHTML = tiles.map(t=>`<div class="tile"><div class="lab">${t.lab}</div><div class="val ${t.cls||''}">${t.val}</div><div class="sub">${t.sub}</div></div>`).join('');
+  return {rows,t};
+}
+
+/* ---------- Тревоги и доверие к цифрам ---------- */
+function renderAlerts(){
+  // в этой панели деньги — точные, без округления до «млн»: сверка требует точности
+  const fmtFull = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+  const list=[];
+  if(state.source==='csv'){
+    const ing=state.lastIngest;
+    list.push({cls:'good', html:`Источник: <b>CSV-файл</b>${state.sourceName?` «${state.sourceName}»`:''}, загружено ${state.lastSync}. Строк: ${fmtN(ing?ing.rows:0)}, выручка файла ${fmtFull(ing?ing.revenue:0)}, продано ${fmtN(ing?ing.qty:0)} шт`});
+    // контрольные суммы по всем данным
+    const rev=state.daily.reduce((s,d)=>s+Object.values(d.lines).reduce((s2,l)=>s2+l.revenue,0),0);
+    const qty=state.daily.reduce((s,d)=>s+Object.values(d.lines).reduce((s2,l)=>s2+l.qty,0),0);
+    list.push({cls:'', html:`Контрольные суммы всех данных: выручка <b>${fmtFull(rev)}</b>, продано <b>${fmtN(qty)}</b> шт, дней данных ${state.daily.length}. Сверьте пару цифр с бухгалтерией до доверия остальным`});
+    // аномалия последнего дня: выручка > 3× медианы последних 30 дней
+    const byDay=state.daily.map(d=>({date:d.date, rev:Object.values(d.lines).reduce((s,l)=>s+l.revenue,0)})).filter(x=>x.rev>0);
+    if(byDay.length>=15){
+      const mids=byDay.slice(-30).map(x=>x.rev).sort((a,b)=>a-b);
+      const med=mids[Math.floor(mids.length/2)];
+      const last=byDay[byDay.length-1];
+      if(med>0 && last.rev>med*3) list.push({cls:'bad', html:`Аномалия: выручка ${isoDate(last.date)} — <b>${fmtFull(last.rev)}</b> против медианы ${fmtFull(med)} последних дней. Требует ручной проверки, данные не правим сами`});
+    }
+  } else {
+    list.push({cls:'', html:'Источник: демо-данные. Загрузите CSV — и здесь появятся штампы источника и контрольные суммы'});
+  }
+  if(state.snapshot){
+    const nRows=state.snapshot.rows.length;
+    const nGoods=new Set(state.snapshot.rows.map(r=>r.my_name)).size;
+    let cls='good', ageTxt='';
+    if(state.snapshot.date){
+      const age=Math.round((new Date()-new Date(state.snapshot.date+'T00:00:00'))/864e5);
+      if(age>3){ cls='warn'; ageTxt=` — срез старый, ${age} дн, пора прогнать радар заново`; }
+    }
+    list.push({cls, html:`Цены конкурентов: срез <b>${state.snapshot.date||'без даты'}</b> · товаров ${nGoods} · пар ${fmtN(nRows)}, надёжных ${fmtN(goodPairs())}${ageTxt}`});
+  } else {
+    list.push({cls:'warn', html:'Цены конкурентов: срез не найден. Положите рядом с дашбордом data-snapshot.json от радара — блок «Позиция по цене» появится сам'});
+  }
+  // сверка API ↔ бухгалтерия (двойная трасса): по общим датам, где у обоих есть движения
+  // сверка API ↔ бухгалтерия (двойная трасса): по общим датам, где у обоих есть движения.
+  // Если источником уже является сама выгрузка API — сверять не с чем, показывать нечего.
+  const isApiSource = state.sourceName==='продажи-из-api.csv';
+  if(state.apiSum && state.source==='csv' && !isApiSource){
+    let bRev=0,bQty=0,aRev=0,aQty=0,aComm=0,bComm=0,days=0;
+    state.daily.forEach(d=>{
+      const api=state.apiSum.get(d.date);
+      if(!api) return;
+      let dayB=0,dayA=0,dayBq=0,dayAq=0,dayBc=0,dayAc=0;
+      Object.values(d.lines).forEach(l=>{
+        const ap=api[l.article];
+        if(!ap) return;
+        dayB+=l.revenue||0; dayBq+=l.qty||0; dayBc+=l.commission||0;
+        dayA+=ap.rev||0;    dayAq+=ap.qty||0; dayAc+=ap.comm||0;
+      });
+      if(dayB>0||dayA>0){ bRev+=dayB; bQty+=dayBq; aRev+=dayA; aQty+=dayAq;
+        aComm+=dayAc;
+        bComm+=dayBc;
+        days++;
+      }
+    });
+    if(days>0){
+      const pctRev=bRev>0?Math.abs(aRev-bRev)/bRev*100:0;
+      const pctQty=bQty>0?Math.abs(aQty-bQty)/bQty*100:0;
+      const cls=pctRev<=1&&pctQty<=1?'good':(pctRev<=5?'warn':'bad');
+      list.push({cls, html:`Двойная трасса API ↔ бухгалтерия по ${fmtN(days)} общим дням: выручка ${fmtFull(aRev)} против ${fmtFull(bRev)} (расхождение ${pctRev.toFixed(1)}%), продано ${fmtN(aQty)} против ${fmtN(bQty)} шт (${pctQty.toFixed(1)}%)`});
+      list.push({cls:'', html:`Комиссия: API ${fmtFull(aComm)} / бухгалтерия ${fmtFull(bComm)} — у API это упрощённая оценка (WB не гарантирует точность), точную даёт отчёт реализации. В расчёте прибыли доверять ей до сверки`});
+    } else {
+      list.push({cls:'warn', html:'Двойная трасса: общий период API и бухгалтерии не совпал — сверка невозможна (сравниваются только одинаковые даты и артикулы)'});
+    }
+    if(state.apiStamp){
+      list.push({cls:'', html:`Срез остатков по API: ${state.apiStamp.срез}${state.apiStamp.товаров?` · позиций ${fmtN(state.apiStamp.товаров)}`:''}${state.apiStamp.byArt&&Object.keys(state.apiStamp.byArt).length?` · сшит с товарами по nmId (${Object.keys(state.apiStamp.byArt).length} шт)`:' — к товарам не сшит (нет карты)'}`});
+    }
+  } else if(isApiSource && state.apiStamp){
+    list.push({cls:'', html:`Источник — выгрузка API. Срез остатков: ${state.apiStamp.срез}, позиций ${fmtN(state.apiStamp.товаров)}${state.apiStamp.byArt&&Object.keys(state.apiStamp.byArt).length?`, сшит с товарами по nmId (${Object.keys(state.apiStamp.byArt).length} шт)`:''}`});
+  } else {
+    list.push({cls:'', html:'Сверка API ↔ бухгалтерия: включится, когда дашборд откроется с сервера и рядом будет продажи-из-api.csv от ежедневной выгрузки'});
+  }
+  // точная комиссия из отчётов реализации — работает при любом источнике
+  if(state.apiReports && state.apiReports.rows.length){
+    const rp=state.apiReports;
+    const hold=rp.retail-rp.forPay;
+    if(hold>=0){
+      const pct=rp.retail>0?(hold/rp.retail*100).toFixed(1)+'%':'—';
+      list.push({cls:'', html:`Отчёты реализации (${rp.период}): точные удержания WB <b>${fmtFull(hold)}</b> — ${pct} выручки. Упрощённая «комиссия» выгрузки количественно недостоверна, точную смотреть в блоке отчётов снизу`});
+    } else {
+      list.push({cls:'warn', html:`Отчёты реализации (${rp.период}): по сумме недель «к перечислению» больше, чем «продано» (${fmtFull(hold)}) — WB сводит в недельный платёж перерасчёты других недель. Надёжные недели — в блоке отчётов снизу`});
+    }
+  }
+  $('#alertsList').innerHTML = list.map(i=>`<li class="${i.cls}">${i.html}</li>`).join('');
+}
+
+/* ---------- Выводы (авто-выжимка по периоду) ---------- */
+function renderInsights(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to); const t=totals(rows);
+  const p=prevRange(); const pt=totals(aggPeriod(p.from,p.to));
+  const items=[];
+  const dlt=(cur,prev)=> prev>0 ? (cur-prev)/prev : null;
+
+  // Общая прибыль за период
+  if(t.revenue>0 || t.orders>0){
+    if(t.profit>=0) items.push({cls:'good',html:`Период в плюсе: <b>${fmtR(t.profit)}</b> чистой прибыли`});
+    else items.push({cls:'bad',html:`Период в убытке: <b>${fmtR(t.profit)}</b>. Выручка не покрывает комиссию, рекламу и себестоимость`});
+  }
+
+  // Динамика выручки к прошлому периоду
+  const d=dlt(t.revenue,pt.revenue);
+  if(d!=null){
+    const cls=d>0.001?'good':d<-0.001?'bad':'info';
+    const word=d>0.001?'рост':d<-0.001?'падение':'без изменений';
+    items.push({cls,html:`Выручка к прошлому периоду: <b>${word} ${Math.abs(d*100).toFixed(0)}%</b> (${fmtR(pt.revenue)} → ${fmtR(t.revenue)})`});
+  }
+
+  // Реклама
+  if(t.adSpend>0 && t.roi!=null){
+    const roi=t.roi;
+    if(roi<1) items.push({cls:'bad',html:`Реклама в минусе: ROI <b>${roi.toFixed(2)}×</b> — на ${fmtR(t.adSpend)} расходов возвращается ${fmtR(t.revenue)}. Пересмотри ставки или отключи слабые кампании`});
+    else if(roi<1.5) items.push({cls:'warn',html:`Реклама окупается слабо: ROI <b>${roi.toFixed(2)}×</b>. Норма — от 1.5×`});
+    else items.push({cls:'good',html:`Реклама окупается: ROI <b>${roi.toFixed(2)}×</b> (расход ${fmtR(t.adSpend)} → выручка ${fmtR(t.revenue)})`});
+  } else if(t.revenue>0 || t.orders>0){
+    items.push({cls:'info',html:'Расходов на рекламу за период нет'});
+  }
+
+  // Лучший товар
+  const byProfit=[...rows].filter(r=>r.qty>0).sort((a,b)=>b.profit-a.profit);
+  if(byProfit.length){
+    const top=byProfit[0];
+    items.push({cls:top.profit>=0?'good':'info',html:`Лучший товар: <b>${top.name}</b> — прибыль ${fmtR(top.profit)}`});
+  }
+
+  // Убыточные товары
+  const loss=byProfit.filter(r=>r.profit<0);
+  if(loss.length){
+    const names=loss.slice(0,3).map(r=>`${r.name} (${fmtR(r.profit)})`).join(', ');
+    items.push({cls:'bad',html:`В минусе: <b>${names}</b>${loss.length>3?` и ещё ${loss.length-3}`:''}. Снизь рекламу или пересмотри цену`});
+  }
+
+  // Слабый ROI рекламы по товару (мягкий негатив — между «хорошо» и «плохо»)
+  const byRoi=rows.filter(r=>r.adSpend>0 && r.qty>0).map(r=>({name:r.name,roi:r.revenue/r.adSpend,ad:r.adSpend})).sort((a,b)=>a.roi-b.roi);
+  if(byRoi.length && byRoi[0].roi<1.5){
+    const w=byRoi[0];
+    items.push({cls:'warn',html:`Слабый ROI рекламы: <b>${w.name}</b> — ${w.roi.toFixed(2)}× на ${fmtR(w.adSpend)} расходов. Пересмотри ставки по этому товару`});
+  }
+
+  // Возвраты
+  const retShare=(t.returns+t.orders)>0 ? t.returns/(t.returns+t.orders) : 0;
+  if(t.returns>0){
+    if(retShare>0.10) items.push({cls:'warn',html:`Высокая доля возвратов: <b>${(retShare*100).toFixed(0)}%</b> (${fmtN(t.returns)} шт). Проверь качество и описание карточек`});
+    else items.push({cls:'info',html:`Возвраты <b>${(retShare*100).toFixed(0)}%</b> (${fmtN(t.returns)} шт) — в пределах нормы`});
+  } else if(t.revenue>0 || t.orders>0){
+    items.push({cls:'info',html:'Возвратов за период нет'});
+  }
+
+  // Заканчивающиеся остатки
+  const low=rows.filter(r=>r.stock>0 && r.stock<20).sort((a,b)=>a.stock-b.stock);
+  if(low.length){
+    const names=low.slice(0,4).map(r=>`${r.name} (${fmtN(r.stock)} шт)`).join(', ');
+    items.push({cls:'warn',html:`Заканчиваются: <b>${names}</b>${low.length>4?` и ещё ${low.length-4}`:''}. Пора пополнить склад`});
+  }
+
+  $('#insightsList').innerHTML = items.map(it=>`<li class="${it.cls}">${it.html}</li>`).join('');
+}
+
+/* ---------- ABC-анализ и оборачиваемость (этап 2) ---------- */
+// Считает для каждого товара: класс ABC (по накопленной доле выручки), долю,
+// скорость продаж шт/день и «покрытие остатка» — на сколько дней хватит остатка
+// при текущей скорости. Это и есть практичная оборачиваемость: день/нед/месяц.
+function abcData(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to); totals(rows); // totals вешает r.profit на каждую строку
+  // дни считаются по пересечению периода с фактическим диапазоном данных:
+  // период «год» при полугоде данных не занижает скорость продаж и не раздувает покрытие
+  let minD=null,maxD=null;
+  state.daily.forEach(d=>{ if(minD==null||d.date<minD)minD=d.date; if(maxD==null||d.date>maxD)maxD=d.date; });
+  let days=0;
+  if(minD!=null){
+    const lo=isoDate(from)<minD?minD:isoDate(from);
+    const hiD=new Date(maxD); hiD.setDate(hiD.getDate()+1);
+    const hi=isoDate(to)<isoDate(hiD)?isoDate(to):isoDate(hiD);
+    days=Math.max(0,Math.round((new Date(hi)-new Date(lo))/864e5));
+  }
+  const sorted=[...rows].sort((a,b)=>b.revenue-a.revenue);
+  const total=sorted.reduce((s,r)=>s+r.revenue,0);
+  let acc=0;
+  const items=sorted.map(r=>{
+    const share=total>0?r.revenue/total:0;
+    const abc=acc<0.80?'A':acc<0.95?'B':'C';
+    acc+=share;
+    const dailyRate=days>0?r.qty/days:0;              // продаётся шт/день
+    const cover=dailyRate>0?r.stock/dailyRate:null;   // на сколько дней хватит остатка
+    return {...r,share,accum:acc,abc,abcShare:share,dailyRate,cover,days};
+  });
+  return {items,days};
+}
+// Класс покрытия (для подсветки): <7 — выгорит до нуля, >120 — деньги лежат мёртвым грузом
+function coverCls(c){ return c==null?'':c<7?'stock-low':c>120?'warn-num':''; }
+// Красивый формат покрытия: до года — дни, дальше — годы (71 461 дней читать невозможно)
+function fmtCover(c){
+  if(c==null) return '—';
+  if(c>=730) return '≈'+(c/365).toFixed(0)+' лет';
+  if(c>=365) return '≈'+(c/365).toFixed(1)+' г';
+  return Math.round(c)+' дн';
+}
+
+function renderABC(){
+  const {items,days}=abcData();
+  $('#abcSub').textContent=`A — дают первые 80% выручки, B — до 95%, C — остальное · период ${days} дн · покрытие = на сколько дней хватит остатка`;
+  const head=['Товар','ABC','Выручка','Доля','Накопл.','Продано','Прибыль','Остаток','Покрытие, дн'];
+  const colCls=['','center','num','num tbl-hide-920','num tbl-hide-920','num tbl-hide-768','num','num tbl-hide-560','num tbl-hide-768'];
+  $('#abcHead').innerHTML='<tr>'+head.map((h,i)=>`<th class="${colCls[i]}">${h}</th>`).join('')+'</tr>';
+  $('#abcBody').innerHTML = items.map(r=>`
+    <tr>
+      <td><b>${r.article}</b> <span class="muted">${r.name}</span></td>
+      <td class="center"><span class="abc-badge ${r.abc.toLowerCase()}">${r.abc}</span></td>
+      <td class="num">${fmtR(r.revenue)}</td>
+      <td class="num tbl-hide-920">${fmtPct(r.share)}</td>
+      <td class="num tbl-hide-920">${fmtPct(r.accum)}</td>
+      <td class="num tbl-hide-768">${fmtN(r.qty)}</td>
+      <td class="num ${r.profit>=0?'profit-pos':'profit-neg'}">${fmtR(r.profit)}</td>
+      <td class="num tbl-hide-560">${fmtN(r.stock)}</td>
+      <td class="num tbl-hide-768">${r.cover==null?'—':`<span class="${coverCls(r.cover)}">${fmtCover(r.cover)}</span>`}</td>
+    </tr>`).join('')
+    ||'<tr><td colspan="9" class="empty">Нет данных за период</td></tr>';
+  // сводка по классам: сколько товаров и сколько выручки в каждом
+  const grp={A:0,B:0,C:0}, cnt={A:0,B:0,C:0};
+  items.forEach(r=>{grp[r.abc]+=r.revenue;cnt[r.abc]++;});
+  const tot=items.reduce((s,r)=>s+r.revenue,0);
+  $('#abcNote').textContent = tot>0
+    ? `Класс A: ${cnt.A} тов. (${fmtPct(grp.A/tot)} выручки) · B: ${cnt.B} (${fmtPct(grp.B/tot)}) · C: ${cnt.C} (${fmtPct(grp.C/tot)})`
+    : '';
+}
+
+/* Рекомендации v1: правила из плана, каждая с расчётом «почему» */
+function renderRecs(){
+  const {items,days}=abcData();
+  // общие итоги по товарам (r.profit уже посчитан в abcData)
+  const t={revenue:items.reduce((s,r)=>s+r.revenue,0),adSpend:items.reduce((s,r)=>s+r.adSpend,0)};
+  const recs=[];
+  const add=(cls,what,why)=>recs.push({cls,html:`${what}<span class="why"><b>Почему:</b> ${why}</span>`});
+
+  // 1. ДРР выше 15% → проверить рекламные кампании
+  if(t.revenue>0 && t.adSpend>0 && t.adSpend/t.revenue>0.15){
+    add('bad','Реклама съедает больше 15% выручки — проверить кампании',
+      `ДРР ${fmtPct(t.adSpend/t.revenue)} = реклама ${fmtR(t.adSpend)} ÷ выручка ${fmtR(t.revenue)}. Норма управленца: до 15%`);
+  }
+
+  // 2. Товар класса A в минусе — главный убыток
+  const badA=items.filter(r=>r.abc==='A'&&r.profit<0).sort((a,b)=>a.profit-b.profit);
+  badA.slice(0,2).forEach(r=>{
+    add('bad',`${r.name}: товар-локомотив работает в минус — пересмотреть цену или рекламу`,
+      `Класс A (${fmtPct(r.abcShare)} выручки), прибыль <b>${fmtR(r.profit)}</b> = выручка ${fmtR(r.revenue)} − комиссия ${fmtR(r.commission)} − реклама ${fmtR(r.adSpend)} − себестоимость ${fmtR(r.qty*costOf(r))}`);
+  });
+
+  // 3. Застой: товар не продаётся дольше 90 дней при наличии остатка
+  const frozen=items.filter(r=>r.cover!=null&&r.cover>90).sort((a,b)=>b.cover-a.cover);
+  if(frozen.length){
+    const names=frozen.slice(0,3).map(r=>r.name).join(', ');
+    add('warn',`Застой остатков: ${names}${frozen.length>3?` и ещё ${frozen.length-3}`:''} — не докупать, распродавать`,
+      frozen.slice(0,3).map(r=>`«${r.name}»: продано ${fmtN(r.qty)} шт за ${days} дн (${r.dailyRate.toFixed(2)}/день), остаток ${fmtN(r.stock)} шт → хватит на <b>${fmtCover(r.cover)}</b>`).join('; '));
+  }
+
+  // 4. Скоро ноль: покрытие < 14 дней, остаток ещё есть → докупить
+  const urgent=items.filter(r=>r.stock>0&&r.cover!=null&&r.cover<14).sort((a,b)=>a.cover-b.cover);
+  urgent.slice(0,3).forEach(r=>{
+    const order=Math.max(1,Math.round((30-r.cover)*r.dailyRate)); // докупить до 30 дней покрытия
+    add('warn',`${r.name}: остаток кончается через ${Math.round(r.cover)} дн — докупить ~${fmtN(order)} шт`,
+      `Продаётся ${r.dailyRate.toFixed(1)} шт/день, в остатке ${fmtN(r.stock)} шт (покрытие ${Math.round(r.cover)} дн). ${fmtN(order)} шт продлевают до 30 дней`);
+  });
+
+  // 5. Товар с большой ДРР (>20%) — реклама не отдаёт
+  const byDrr=items.filter(r=>r.revenue>0&&r.adSpend>0&&r.adSpend/r.revenue>0.20).map(r=>({name:r.name,drr:r.adSpend/r.revenue,ad:r.adSpend,rev:r.revenue})).sort((a,b)=>b.drr-a.drr);
+  byDrr.slice(0,2).forEach(w=>{
+    add('warn',`${w.name}: рекламный расход на товар выше нормы — снизить ставку или проверить кампанию`,
+      `ДРР ${fmtPct(w.drr)} = реклама ${fmtR(w.ad)} ÷ выручка ${fmtR(w.rev)}. Норма на товар: до 20%`);
+  });
+
+  // 6. Доля возвратов по товару выше 10% — проверить карточку
+  const byRet=items.filter(r=>(r.returns+r.orders)>0&&r.returns/(r.returns+r.orders)>0.10).sort((a,b)=>b.returns/(b.returns+b.orders)-a.returns/(a.returns+a.orders));
+  byRet.slice(0,2).forEach(r=>{
+    const sh=r.returns/(r.returns+r.orders);
+    add('warn',`${r.name}: возвраты выше нормы — проверить карточку и качество`,
+      `${fmtN(r.returns)} возвратов из ${fmtN(r.returns+r.orders)} заказов = ${fmtPct(sh)}. Норма на WB: до 10%`);
+  });
+
+  if(!recs.length) add('info','Проблемных зон за период не найдено','Все правила (ДРР, прибыль класса A, застой, покрытие, ROI рекламы, возвраты) в норме');
+  $('#recsList').innerHTML=recs.map(rc=>`<li class="${rc.cls}">${rc.html}</li>`).join('');
+}
+// себестоимость одного товара (общая точка: ручной ввод или демо-значение)
+function costOf(r){ return state.costs[r.article]!=null?state.costs[r.article]:findDemoCost(r.article); }
+
+/* ---------- Графики: общие утилиты SVG ---------- */
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs={},text){
+  const e=document.createElementNS(NS,tag);
+  for(const k in attrs) e.setAttribute(k,attrs[k]);
+  if(text!=null) e.textContent=text;
+  return e;
+}
+function niceMax(v){ const p=Math.pow(10,Math.floor(Math.log10(Math.max(v,1)))); const n=v/p; const m=n<1.5?1.5:n<3?3:n<7?7:10; return m*p; }
+function chartFrame(svg, h, dataMax, yFmt){
+  const W=svg.parentElement.clientWidth-2, H=svg.getAttribute('height')|0;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  const pad={l:46,r:12,t:10,b:24};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const max=niceMax(dataMax);
+  return {W,H,pad,pw,ph,max};
+}
+// tooltip
+const tt=$('#tt');
+function showTip(html,x,y){ tt.innerHTML=html; tt.style.opacity=1; const r=tt.getBoundingClientRect(); tt.style.left=Math.min(x+12,innerWidth-r.width-8)+'px'; tt.style.top=Math.max(8,y-r.height-8)+'px'; }
+function hideTip(){ tt.style.opacity=0; }
+
+/* Линейный/площадной + столбцы */
+function renderDyn(){
+  const {from,to}=periodRange();
+  const bs=buckets(from,to);
+  const series=bs.map(b=>{ const rows=aggPeriod(new Date(b.from),new Date(b.to)); const t=totals(rows); return {label:b.label, v:state.metric==='revenue'?t.revenue:state.metric==='orders'?t.orders:t.profit}; });
+  const svg=$('#dynChart'); const f=chartFrame(svg,220,Math.max(...series.map(s=>Math.abs(s.v)),1));
+  // grid
+  const steps=4;
+  for(let i=0;i<=steps;i++){
+    const v=f.max*i/steps; const y=f.pad.t+f.ph-f.ph*i/steps;
+    svg.appendChild(el('line',{class:'grid-line',x1:f.pad.l,x2:f.pad.l+f.pw,y1:y,y2:y}));
+    svg.appendChild(el('text',{class:'axis-text',x:f.pad.l-6,y:y+3,'text-anchor':'end'},fmt(v)));
+  }
+  const bw=f.pw/series.length;
+  // столбцы
+  const col=state.metric==='profit'?'--series-1':'--series-1';
+  const negCol='var(--crit)';
+  series.forEach((s,i)=>{
+    const x=f.pad.l+bw*i+bw*0.18, w=bw*0.64;
+    const h=f.ph*Math.abs(s.v)/f.max;
+    const y=f.pad.t+f.ph-h;
+    const bar=el('rect',{x,y:Math.min(y,f.pad.t+f.ph),width:w,height:Math.max(0,h),rx:3,fill:`var(${s.v<0?'--crit':'--series-1'})`});
+    svg.appendChild(bar);
+    // hit
+    const hit=el('rect',{x:f.pad.l+bw*i,y:0,width:bw,height:f.H,fill:'transparent'});
+    hit.addEventListener('mousemove',e=>showTip(`<b>${s.label}</b><br>${state.metric==='revenue'?'Выручка':state.metric==='orders'?'Заказы':'Прибыль'}: ${state.metric==='orders'?fmtN(s.v):fmtR(s.v)}`,e.clientX,e.clientY));
+    hit.addEventListener('mouseleave',hideTip);
+    svg.appendChild(hit);
+  });
+  // baseline
+  svg.appendChild(el('line',{class:'baseline',x1:f.pad.l,x2:f.pad.l+f.pw,y1:f.pad.t+f.ph,y2:f.pad.t+f.ph}));
+  // x labels — кратные
+  const labStep=Math.ceil(series.length/8);
+  series.forEach((s,i)=>{ if(i%labStep===0||i===series.length-1){
+    svg.appendChild(el('text',{class:'axis-text',x:f.pad.l+bw*i+bw/2,y:f.H-f.pad.b+14,'text-anchor':'middle'},s.label));
+  }});
+  const desc={revenue:'Выручка по периоду (₽)',orders:'Заказы по периоду (шт)',profit:'Прибыль по периоду (₽, выручка − комиссия − реклама − себестоимость)'}[state.metric];
+  $('#dynDesc').textContent=desc;
+}
+
+/* Реклама: расходы + заказы (две панели в одной карточке, но НЕ dual-axis — отдельные мини-чарты) */
+function renderAds(){
+  const {from,to}=periodRange();
+  const bs=buckets(from,to);
+  const series=bs.map(b=>{ const rows=aggPeriod(new Date(b.from),new Date(b.to)); const t=totals(rows); return {label:b.label, ad:t.adSpend, orders:t.orders}; });
+  const svg=$('#adsChart'); const f=chartFrame(svg,220,Math.max(...series.map(s=>s.ad),1));
+  const steps=4;
+  for(let i=0;i<=steps;i++){ const v=f.max*i/steps; const y=f.pad.t+f.ph-f.ph*i/steps;
+    svg.appendChild(el('line',{class:'grid-line',x1:f.pad.l,x2:f.pad.l+f.pw,y1:y,y2:y}));
+    svg.appendChild(el('text',{class:'axis-text',x:f.pad.l-6,y:y+3,'text-anchor':'end'},fmt(v))); }
+  const bw=f.pw/series.length;
+  series.forEach((s,i)=>{
+    const x=f.pad.l+bw*i+bw*0.18, w=bw*0.64;
+    const h=f.ph*Math.max(0,s.ad)/f.max; const y=f.pad.t+f.ph-h;
+    svg.appendChild(el('rect',{x,y,width:w,height:h,rx:3,fill:'var(--series-2)'}));
+    const hit=el('rect',{x:f.pad.l+bw*i,y:0,width:bw,height:f.H,fill:'transparent'});
+    hit.addEventListener('mousemove',e=>showTip(`<b>${s.label}</b><br>Расходы: ${fmtR(s.ad)}<br>Заказы: ${fmtN(s.orders)}`,e.clientX,e.clientY));
+    hit.addEventListener('mouseleave',hideTip);
+    svg.appendChild(hit);
+  });
+  svg.appendChild(el('line',{class:'baseline',x1:f.pad.l,x2:f.pad.l+f.pw,y1:f.pad.t+f.ph,y2:f.pad.t+f.ph}));
+  const labStep=Math.ceil(series.length/8);
+  series.forEach((s,i)=>{ if(i%labStep===0||i===series.length-1)
+    svg.appendChild(el('text',{class:'axis-text',x:f.pad.l+bw*i+bw/2,y:f.H-f.pad.b+14,'text-anchor':'middle'},s.label)); });
+  // добавим легенду над графиком один раз
+  const card=svg.closest('.card');
+  if(!card.querySelector('.adsLegend')){
+    const d=document.createElement('div'); d.className='legend adsLegend';
+    d.innerHTML='<span><i style="background:var(--series-2)"></i>Расходы на рекламу</span><span>числа над столбцами — заказы</span>';
+    svg.parentElement.insertBefore(d,svg);
+  }
+}
+
+/* Горизонтальные бары: прибыль по товарам */
+function renderProfit(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to); const t=totals(rows);
+  rows.sort((a,b)=>b.profit-a.profit);
+  const svg=$('#profitChart'); const H=28*rows.length+24;
+  svg.setAttribute('height',H);
+  const W=svg.parentElement.clientWidth-2; svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.innerHTML='';
+  const labW=Math.min(160,W*0.34);
+  const valW=78; const pw=W-labW-valW-16; const max=Math.max(...rows.map(r=>Math.abs(r.profit)),1);
+  const niceM=niceMax(max);
+  rows.forEach((r,i)=>{
+    const y=12+i*28;
+    svg.appendChild(el('text',{class:'axis-text',x:labW-8,y:y+10,'text-anchor':'end'},r.name.length>26?r.name.slice(0,24)+'…':r.name));
+    const w=pw*Math.abs(r.profit)/niceM;
+    const x=labW;
+    svg.appendChild(el('rect',{x,y:6+y,width:Math.max(1,w),height:16,rx:3,fill:r.profit>=0?'var(--series-1)':'var(--crit)'}));
+    svg.appendChild(el('text',{class:'axis-text',x:labW+pw+6,y:y+13,'text-anchor':'start',fill:r.profit>=0?'var(--good-ink)':'var(--crit)'},fmtR(r.profit)));
+    const hit=el('rect',{x:0,y,width:W,height:24,fill:'transparent'});
+    hit.addEventListener('mousemove',e=>showTip(`<b>${r.name}</b><br>Артикул: ${r.article}<br>Прибыль: ${fmtR(r.profit)}<br>Выручка: ${fmtR(r.revenue)}`,e.clientX,e.clientY));
+    hit.addEventListener('mouseleave',hideTip);
+    svg.appendChild(hit);
+  });
+}
+
+/* Остатки по товарам (горизонтальные бары) */
+function renderStock(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to);
+  rows.sort((a,b)=>b.stock-a.stock);
+  const svg=$('#stockChart'); const H=28*rows.length+24;
+  svg.setAttribute('height',H); const W=svg.parentElement.clientWidth-2;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  const labW=Math.min(160,W*0.34); const valW=54; const pw=W-labW-valW-16;
+  const max=Math.max(...rows.map(r=>r.stock),1);
+  rows.forEach((r,i)=>{
+    const y=12+i*28;
+    svg.appendChild(el('text',{class:'axis-text',x:labW-8,y:y+10,'text-anchor':'end'},r.name.length>26?r.name.slice(0,24)+'…':r.name));
+    const w=pw*r.stock/max;
+    const low=r.stock<20;
+    svg.appendChild(el('rect',{x:labW,y:6+y,width:Math.max(1,w),height:16,rx:3,fill:low?'var(--crit)':'var(--series-3)'}));
+    svg.appendChild(el('text',{class:'axis-text',x:labW+pw+6,y:y+13,'text-anchor':'start',fill:low?'var(--crit)':'var(--ink-1)'},fmtN(r.stock)));
+    const hit=el('rect',{x:0,y,width:W,height:24,fill:'transparent'});
+    hit.addEventListener('mousemove',e=>showTip(`<b>${r.name}</b><br>Остаток: ${fmtN(r.stock)} шт<br>(все склады WB)`,e.clientX,e.clientY));
+    hit.addEventListener('mouseleave',hideTip); svg.appendChild(hit);
+  });
+}
+
+/* Круговой график: структура выручки по типам товаров */
+const PIE_COLORS=['--series-1','--series-2','--series-3','--series-4','--series-5','--series-6','--series-7','--series-8'];
+function renderPie(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to);
+  const byType={};
+  rows.forEach(r=>{ if(r.revenue<=0) return; const t=artType(r.article)||'Без типа'; byType[t]=(byType[t]||0)+r.revenue; });
+  const entries=Object.entries(byType).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+  const total=entries.reduce((s,e)=>s+e[1],0);
+  // максимум 3 сектора + «Остальные»: больше трёх читается хуже таблицы
+  // (практика дашбордов: пирог — для 2–3 долей, не для перечня)
+  let shown=entries;
+  if(entries.length>3){
+    shown=entries.slice(0,3).concat(
+      [['Остальные ('+(entries.length-3)+')',
+        entries.slice(3).reduce((s,e)=>s+e[1],0)]]);
+  }
+  const svg=$('#pieChart'); svg.innerHTML='';
+  if(total<=0){
+    svg.innerHTML='<text class="pie-center-sub" x="90" y="92">нет данных за период</text>';
+    $('#pieLegend').innerHTML='';
+    return;
+  }
+  const cx=90,cy=90,r=64,sw=26,C=2*Math.PI*r;
+  const g=el('g',{transform:`rotate(-90 ${cx} ${cy})`});
+  let acc=0;
+  shown.forEach((e,i)=>{
+    const frac=e[1]/total; const dash=frac*C;
+    const seg=el('circle',{cx,cy,r,fill:'none',stroke:`var(${PIE_COLORS[i%PIE_COLORS.length]})`,'stroke-width':sw,'stroke-dasharray':`${dash} ${C-dash}`,'stroke-dashoffset':-acc});
+    seg.addEventListener('mousemove',ev=>showTip(`<b>${e[0]}</b><br>${fmtR(e[1])} · ${(frac*100).toFixed(0)}% выручки`,ev.clientX,ev.clientY));
+    seg.addEventListener('mouseleave',hideTip);
+    g.appendChild(seg); acc+=dash;
+  });
+  svg.appendChild(g);
+  // центральная подпись (поверх, не повёрнута)
+  // центр donut: только «выручки» маленькой подписью, без дубля крупной цифры (она уже есть в KPI сверху)
+  svg.appendChild(el('text',{class:'pie-center-sub',x:cx,y:cy-4},'выручка'));
+  svg.appendChild(el('text',{class:'pie-center',x:cx,y:cy+14,fill:'var(--ink-2)',fontWeight:'600'},fmtN(entries.length)+' групп'));
+  // легенда
+  $('#pieLegend').innerHTML=shown.map((e,i)=>`<li><i style="background:var(${PIE_COLORS[i%PIE_COLORS.length]})"></i>${e[0]}<span class="pc">${(e[1]/total*100).toFixed(0)}%</span></li>`).join('');
+}
+
+/* ---------- Таблица товаров ---------- */
+function renderTable(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to).sort((a,b)=>b.revenue-a.revenue);
+  const head=['Товар','Продано','Выручка','Комиссия WB','Реклама','Себест./шт','Себест. всего','Прибыль','ROI','Остатки'];
+  // Классы скрытия колонок на узких экранах: 920 → комиссия/реклама/себест.всего/ROI, 768 → ещё часть, 560 → минимум
+  const colCls=['','num','num','num tbl-hide-768','num tbl-hide-920','num tbl-hide-560','num tbl-hide-768','num','num tbl-hide-768','num'];
+  $('#goodsHead').innerHTML='<tr>'+head.map((h,i)=>`<th class="${colCls[i]}">${h}</th>`).join('')+'</tr>';
+  const body=rows.map(r=>{
+    const cost=state.costs[r.article]!=null?state.costs[r.article]:findDemoCost(r.article);
+    const cogs=cost*r.qty;
+    const profit=r.revenue-r.commission-r.adSpend-cogs;
+    const roi=r.adSpend>0?(r.revenue/r.adSpend):null;
+    const roiCls=roi==null?'':roi<10?'bad':roi<13?'warn':'good';
+    const low=r.stock<20;
+    return `<tr>
+      <td><b>${r.article}</b> <span class="muted">${r.name}</span></td>
+      <td class="num">${fmtN(r.qty)}</td>
+      <td class="num">${fmtR(r.revenue)}</td>
+      <td class="num tbl-hide-768">${fmtR(r.commission)}</td>
+      <td class="num tbl-hide-920">${fmtR(r.adSpend)}</td>
+      <td class="num tbl-hide-560"><input class="cost" data-art="${r.article}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>
+      <td class="num tbl-hide-768">${fmtR(cogs)}</td>
+      <td class="num ${profit>=0?'profit-pos':'profit-neg'}">${fmtR(profit)}</td>
+      <td class="num tbl-hide-768">${roi!=null?`<span class="roi-pill ${roiCls}">${roi.toFixed(2)}×</span>`:'—'}</td>
+      <td class="num ${low?'stock-low':''}">${fmtN(r.stock)}</td>
+    </tr>`;
+  }).join('');
+  $('#goodsBody').innerHTML=body||'<tr><td colspan="10" class="empty">Нет данных за период</td></tr>';
+  // обработчики ввода себестоимости
+  $('#goodsBody').querySelectorAll('input.cost').forEach(inp=>{
+    inp.addEventListener('change',()=>{
+      const art=inp.dataset.art; const v=parseFloat(inp.value.replace(',','.'));
+      if(isNaN(v)||v<=0){ delete state.costs[art]; }
+      else state.costs[art]=v;
+      localStorage.setItem('wb_costs',JSON.stringify(state.costs));
+      toast('Себестоимость сохранена');
+      renderAll();
+    });
+  });
+  updateTblScrollIndicator();
+}
+
+/* Показываем тень-индикатор справа в .tbl-scroll, когда контент шире контейнера */
+function updateTblScrollIndicator(){
+  document.querySelectorAll('.tbl-scroll').forEach(el=>{
+    el.classList.toggle('has-overflow-x', el.scrollWidth > el.clientWidth + 1);
+  });
+}
+
+/* ---------- Рендер всего ---------- */
+function renderAll(){
+  renderKPI(); renderAlerts(); renderInsights(); renderABC(); renderPrice(); renderRecs(); renderPie(); renderDyn(); renderAds(); renderProfit(); renderStock(); renderReports(); renderTable();
+  updateTblScrollIndicator();
+  const {from,to}=periodRange();
+  $('#rangeLabel').textContent=`${isoDate(from)} → ${isoDate(addDays(to,-1))}`;
+  $('#modeTag').textContent = state.source==='demo'?'демо-данные':'данные из CSV';
+  $('#lastSync').textContent = state.lastSync? `обновлено ${state.lastSync}`:'';
+  buildGoodMenu();
+}
+
+/* ---------- CSV импорт/экспорт ---------- */
+function parseCSV(text){
+  // разделитель распознаём по заголовку: у русского Excel это «;», у кабинета WB — «,».
+  // Счёт разделителей — ТОЛЬКО вне кавычек: запятые внутри «Выручка, ₽»
+  // не должны перевешивать (RFC 4180: разделитель может сидеть в quoted-поле)
+  const firstLine=text.slice(0,text.indexOf('\n')>0?text.indexOf('\n'):text.length);
+  let outside='', inQ=false;
+  for(let k=0;k<firstLine.length;k++){ const ch=firstLine[k];
+    if(inQ){ if(ch==='"'){ if(firstLine[k+1]==='"')k++; else inQ=false; } }
+    else if(ch==='"') inQ=true; else outside+=ch;
+  }
+  const delim=(outside.match(/;/g)||[]).length > (outside.match(/,/g)||[]).length ? ';' : ',';
+  const rows=[]; let i=0,n=text.length,field='',row=[],q=false;
+  while(i<n){ const c=text[i];
+    if(q){ if(c==='"'&&text[i+1]==='"'){field+='"';i+=2;} else if(c==='"'){q=false;i++;} else {field+=c;i++;} }
+    else{ if(c==='"'){q=true;i++;} else if(c===delim){row.push(field);field='';i++;} else if(c==='\n'||c==='\r'){row.push(field);rows.push(row);row=[];field=''; if(c==='\r'&&text[i+1]==='\n')i++; i++;} else {field+=c;i++;} }
+  }
+  if(field||row.length){row.push(field);rows.push(row);}
+  const head=rows.shift().map(h=>h.trim());
+  return rows.map(r=>{ const o={}; head.forEach((h,k)=>o[h]=r[k]); return o; });
+}
+function importCSV(text, quiet){
+  const rows=parseCSV(text);
+  if(!rows.length) throw new Error('CSV пуст');
+  // контрольные цифры последней загрузки — для панели «Тревоги и доверие»
+  let ingRows=0, ingRev=0, ingQty=0;
+  const byArt={}; let dailyMap={}; const stockByArticle={}; const stockAt={}; const costArts=new Set(); let costHeader=null;
+  // распознаём колонки по смыслу названия: дата/артикул/выручка/себестоимость... — русские и английские, регистр и единицы не важны
+  const norm=s=>String(s).toLowerCase().replace(/[^a-zа-яё]/g,'');
+  const COLS={};
+  if(rows[0]) for(const k of Object.keys(rows[0])){
+    const n=norm(k); let f=null;
+    if(n==='date'||n==='дата') f='date';
+    else if(n==='article'||n==='sku'||n==='nmid'||n==='offerid'||n==='артикул') f='article';
+    else if(n==='name'||n.indexOf('наимен')>=0||n.indexOf('назван')===0||n==='товар') f='name';
+    else if(n==='type'||n==='тип'||n.indexOf('катег')>=0) f='type';
+    else if(n==='qty'||n==='колво'||n.indexOf('колич')===0||n.indexOf('продано')===0||n.indexOf('штук')===0) f='qty';
+    else if(n.indexOf('заказ')>=0||n==='orders') f='orders';
+    else if(n==='revenue'||n.indexOf('выручк')===0||n.indexOf('суммапродаж')===0||n.indexOf('продажи')===0) f='revenue';
+    else if(n.indexOf('комиссия')>=0||n.indexOf('commis')>=0) f='commission';
+    else if(n.indexOf('возврат')>=0||n==='returns') f='returns';
+    else if(n.indexOf('реклам')>=0||n.indexOf('ad')===0) f='ad';
+    else if(n.indexOf('остат')===0||n==='stock') f='stock';
+    else if(n==='cost'||n==='costperunit'||n.indexOf('себест')>=0||n.indexOf('закуп')>=0) f='cost';
+    if(f && !COLS[f]) COLS[f]=k;
+  }
+  if(COLS.cost) costHeader=COLS.cost;
+  const num=v=>{ if(v==null||v==='') return 0; const t=String(v).replace(/[\s\u00A0]/g,'').replace(',','.'); const x=+t; return isNaN(x)?0:x; };
+  rows.forEach(r=>{
+    const g=f=>COLS[f]?r[COLS[f]]:undefined;
+    const date=String(g('date')||'').slice(0,10); const art=String(g('article')||'').trim();
+    if(!art) return;
+    const qty=num(g('qty')), revenue=num(g('revenue')), commission=num(g('commission')), returns=num(g('returns')), ad=num(g('ad')), stock=num(g('stock'));
+    // заказы: своя колонка, если есть (воронка заказ → выкуп); иначе считаем равными продажам
+    const orders=COLS.orders?num(g('orders')):qty;
+    // \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0438 \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044C\u043D\u044B\u0445 \u0446\u0438\u0444\u0440 (\u043F\u043E \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043D\u044B\u043C \u0441\u0442\u0440\u043E\u043A\u0430\u043C \u0444\u0430\u0439\u043B\u0430)
+    ingRows++; ingRev+=revenue; ingQty+=qty;
+    // себестоимость за шт: колонка распознаётся по названию, необязательна
+    const cost=COLS.cost?num(r[COLS.cost]):0;
+    if(cost>0){ state.costs[art]=cost; costArts.add(art); }
+    byArt[art]=byArt[art]||{nmId:art,article:art,name:String(g('name')||'').trim()||('Товар '+art),price:0,cost:0};
+    if(cost>0) byArt[art].cost=cost;
+    if(!dailyMap[date]) dailyMap[date]={date,lines:{}};
+    const L=dailyMap[date].lines[art]||(dailyMap[date].lines[art]={article:art,qty:0,revenue:0,commission:0,returns:0,adSpend:0,orders:0,stock:0});
+    L.qty+=qty; L.revenue+=revenue; L.commission+=commission; L.returns+=returns; L.adSpend+=ad; L.orders+=orders; L.stock+=stock;
+    // остаток — последнее известное значение (по самой поздней дате), а не сумма за все дни
+    if(!stockAt[art] || date >= stockAt[art]) { stockAt[art]=date; stockByArticle[art]=stock; }
+    const t=String(g('type')||'').trim(); if(t) state.types[art]=t;
+  });
+  if(Object.keys(state.types).length) localStorage.setItem('wb_types',JSON.stringify(state.types));
+  if(costArts.size) localStorage.setItem('wb_costs',JSON.stringify(state.costs)); // себестоимость из CSV сохраняем как ручной ввод
+  // === Долив, а не замена ===
+  // Новый файл — это свежие дни поверх уже загруженных: встречающиеся в нём
+  // даты (и артикулы в них) перекрываются файлом, все остальные дни прошлых
+  // загрузок остаются. Так клиент заливает большой период один раз, а потом
+  // доплывает свежими днями, не пересобирая весь файл.
+  const prevCsv = state.source==='csv' ? (()=>{ try{ return JSON.parse(localStorage.getItem('wb_csv_cache')||'null'); }catch(e){ return null; } })() : null;
+  let addedDays=0;
+  if(prevCsv && Array.isArray(prevCsv.daily) && prevCsv.daily.length){
+    const prevDates=new Set(prevCsv.daily.map(d=>d.date));
+    addedDays=Object.keys(dailyMap).filter(d=>!prevDates.has(d)).length;
+    const merged={};
+    prevCsv.daily.forEach(d=>{ merged[d.date]=d; });
+    Object.keys(dailyMap).forEach(d=>{ merged[d]=dailyMap[d]; });
+    dailyMap=merged;
+    // товары из прошлых загрузок, которых нет в новом файле, — оставляем (названия)
+    (prevCsv.goods||[]).forEach(g=>{ if(g && g.article && !byArt[g.article]) byArt[g.article]=g; });
+    // остатки: по артикулам из файла приоритет у файла; по остальным — прошлое значение
+    const pStockAt=prevCsv.stockAt||{};
+    const pStock=prevCsv.stockByArticle||{};
+    Object.keys(pStock).forEach(a=>{
+      if(!(a in stockByArticle)){ stockByArticle[a]=pStock[a]; stockAt[a]=pStockAt[a]||''; }
+    });
+  }
+  state.goods=Object.values(byArt); state.daily=Object.values(dailyMap).map(d=>({date:d.date,lines:Object.values(d.lines)})).sort((a,b)=>a.date<b.date?-1:1);
+  state.stockByArticle=stockByArticle; state.source='csv'; state.lastSync=new Date().toLocaleString('ru-RU');
+  state.lastIngest={rows:ingRows, revenue:ingRev, qty:ingQty};
+  // сохраняем загруженные данные — после перезагрузки страницы дашборд покажет их снова
+  try{
+    localStorage.setItem('wb_csv_cache',JSON.stringify({goods:state.goods,daily:state.daily,stockByArticle:state.stockByArticle,stockAt,lastSync:state.lastSync,sourceName:state.sourceName,lastIngest:state.lastIngest}));
+  }catch(e){ /* переполнение хранилища — не критично, данные останутся на экране */ }
+  // если даты файла не попадают в выбранный период экрана — переключить период на диапазон файла, иначе экран пустой и это похоже на «ничего не загрузилось»
+  const dts=Object.keys(dailyMap).filter(Boolean).sort();
+  let periodNote='';
+  if(dts.length){
+    const pr=periodRange();
+    const fMin=new Date(dts[0]+'T00:00:00'), fMax=addDays(new Date(dts[dts.length-1]+'T00:00:00'),1);
+    if(fMax<=pr.from || fMin>=pr.to){
+      state.period='custom';
+      state.customFrom=fMin; state.customTo=fMax;
+      if(typeof toggleRangeInputs==='function') toggleRangeInputs();
+      const fd=$('#fromDate'); if(fd) fd.value=isoDate(state.customFrom);
+      const td=$('#toDate'); if(td) td.value=isoDate(state.customTo);
+      periodNote=' Период экрана не включал даты файла — переключён на '+isoDate(fMin)+'…'+isoDate(addDays(fMax,-1));
+    }
+  }
+  renderAll();
+  // честный отчёт: сколько дней долито, если шёл «долив», + себестоимость + период
+  const nGoods=Object.keys(byArt).length;
+  const dCount=state.daily.length;
+  const fillText = (prevCsv && prevCsv.daily && prevCsv.daily.length)
+    ? ' Долив: в файле '+rows.length+' строк, новых дней добавлено '+addedDays+'; всего в дашборде дней: '+dCount+'.'
+    : '';
+  // тихий режим (авто-подхват выгрузки при открытии): тост не нужен —
+  // состояние и так видно по метке в шапке и панели доверия
+  if(quiet){ return; }
+  if(costHeader && costArts.size) toast('CSV загружен: '+nGoods+' товаров. Себестоимость подставлена: '+costArts.size+' товаров.'+fillText+periodNote, !periodNote ? false : true);
+  else if(costHeader && !costArts.size) toast('CSV загружен. Колонка себестоимости «'+costHeader+'» найдена, но значения пусты или 0 — прибыль без закупки.'+fillText+periodNote, true);
+  else toast('CSV загружен: '+nGoods+' товаров. Колонка себестоимости не найдена — прибыль без закупки (нужна колонка «cost» или «себестоимость, ₽/шт»).'+fillText+periodNote, true);
+}
+function exportCSV(){
+  const {from,to}=periodRange();
+  const rows=aggPeriod(from,to);
+  const head=['article','name','qty','revenue','commission','returns','ad_spend','cost_per_unit','cogs','profit','roi','stock'];
+  const out=[head.join(',')];
+  rows.forEach(r=>{
+    const cost=state.costs[r.article]!=null?state.costs[r.article]:findDemoCost(r.article);
+    const cogs=cost*r.qty; const profit=r.revenue-r.commission-r.adSpend-cogs;
+    const roi=r.adSpend>0?(r.revenue/r.adSpend):'';
+    out.push([r.article,'"'+r.name.replace(/"/g,'""')+'',r.qty,Math.round(r.revenue),Math.round(r.commission),r.returns,Math.round(r.adSpend),cost,Math.round(cogs),Math.round(profit),roi!==''?roi.toFixed(3):'',r.stock].join(','));
+  });
+  const blob=new Blob(['﻿'+out.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`wb-sales-${isoDate(from)}_${isoDate(addDays(to,-1))}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('Файл CSV выгружен');
+}
+
+/* ---------- Тост ---------- */
+let toastT;
+function toast(msg,err){ const t=$('#toast'); t.textContent=msg; t.className='toast show'+(err?' err':''); clearTimeout(toastT); toastT=setTimeout(()=>t.className='toast',2600); }
+
+/* ---------- Диалог настроек ---------- */
+const dlg=$('#settingsDlg');
+// Заполнение таблицы товаров (себестоимость + тип) в Настройках
+function renderCostTable(){
+  const types=allTypes();
+  const rows=state.goods.length?state.goods:DEMO_GOODS.map(g=>({...g}));
+  const opts=(cur)=>'<option value="">— без типа —</option>'+types.map(t=>`<option value="${t}" ${t===cur?'selected':''}>${t}</option>`).join('');
+  $('#costBody').innerHTML = rows.map(g=>{
+    const cost=state.costs[g.article]!=null?state.costs[g.article]:findDemoCost(g.article);
+    const cur=state.types[g.article]!=null?state.types[g.article]:(DEMO_ART_TYPE[g.article]||'');
+    return `<tr>
+      <td><b>${g.article}</b></td>
+      <td>${g.name||''}</td>
+      <td><select data-art-type="${g.article}">${opts(cur)}</select></td>
+      <td class="num"><input type="number" min="0" step="1" data-art-cost="${g.article}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>
+    </tr>`;
+  }).join('');
+  // обработчики
+  $('#costBody').querySelectorAll('input[data-art-cost]').forEach(inp=>{
+    inp.addEventListener('change',()=>{
+      const art=inp.dataset.artCost; const v=parseFloat(inp.value);
+      if(isNaN(v)||v<=0) delete state.costs[art]; else state.costs[art]=v;
+      localStorage.setItem('wb_costs',JSON.stringify(state.costs));
+      toast('Себестоимость сохранена'); renderAll();
+    });
+  });
+  $('#costBody').querySelectorAll('select[data-art-type]').forEach(sel=>{
+    sel.addEventListener('change',()=>{
+      const art=sel.dataset.artType; state.types[art]=sel.value;
+      localStorage.setItem('wb_types',JSON.stringify(state.types));
+      toast('Тип товара сохранён'); renderAll();
+    });
+  });
+}
+/* === Импорт/экспорт себестоимости через CSV ============================== */
+
+// Минимальный CSV-парсер: понимает запятые, переносы строк в кавычках и кавычки.
+// Лишние пробелы по краям ячеек убираются. Поддерживает кавычки-экранирование """.
+// Возвращает массив массивов (в отличие от parseCSV выше, который возвращает объекты).
+function parseCSVArrays(text){
+  const rows = [];
+  let cur = [], field = '', inQ = false;
+  for(let i=0;i<text.length;i++){
+    const ch = text[i], nx = text[i+1];
+    if(inQ){
+      if(ch === '"' && nx === '"'){ field += '"'; i++; }
+      else if(ch === '"'){ inQ = false; }
+      else field += ch;
+    }else{
+      if(ch === '"') inQ = true;
+      else if(ch === ','){ cur.push(field); field=''; }
+      else if(ch === '\n'){ cur.push(field); rows.push(cur); cur=[]; field=''; }
+      else if(ch === '\r'){ /* skip — \n сам закроет строку */ }
+      else field += ch;
+    }
+  }
+  if(field.length || cur.length){ cur.push(field); rows.push(cur); }
+  // убираем пустые хвостовые строки
+  while(rows.length && rows[rows.length-1].every(c=>c.trim()==='')) rows.pop();
+  return rows;
+}
+
+// Маппинг заголовков CSV → ключи. Понимаем несколько вариантов имени.
+const CSV_KEY_ALIASES = {
+  vendorcode: 'vendorCode', 'артикул': 'vendorCode', 'артикул wb': 'vendorCode', 'sku': 'vendorCode',
+  nmid: 'nmId', 'nm id': 'nmId', 'nm': 'nmId',
+  barcode: 'barcode', 'бар-код': 'barcode', 'баркод': 'barcode', 'ean': 'barcode', 'ean13': 'barcode', 'штрихкод': 'barcode', 'штрих-код': 'barcode',
+  cost: 'cost', 'себестоимость': 'cost', 'cost_per_unit': 'cost', 'себест': 'cost', 'закупка': 'cost', 'цена закупки': 'cost',
+};
+
+function normalizeRow(row){
+  const out = {};
+  row.forEach(cell => {
+    const k = String(cell || '').trim().toLowerCase().replace(/ё/g,'е');
+    const norm = CSV_KEY_ALIASES[k];
+    if(norm) out.__cur = norm;
+  });
+  return out;
+}
+
+// Читает CSV и возвращает [{vendorCode, nmId, barcode, cost}, ...]
+// Первая строка — заголовки (или распознаём по псевдонимам).
+function readCostsCSV(text){
+  const rows = parseCSVArrays(text).filter(r => r.some(c => String(c).trim() !== ''));
+  if(rows.length < 2) return [];
+  // разбираем заголовки
+  const header = rows[0].map(c => String(c||'').trim());
+  const aliasHeader = header.map(h => String(h||'').trim().toLowerCase().replace(/ё/g,'е'));
+  const idx = {};
+  aliasHeader.forEach((h, i) => {
+    const k = CSV_KEY_ALIASES[h];
+    if(k && idx[k] == null) idx[k] = i;
+  });
+  // fallback: если не нашли ни одной колонки — пробуем формат по позициям: vendorCode,nmId,barcode,cost
+  const hasAny = Object.keys(idx).length > 0;
+  const out = [];
+  for(let r = 1; r < rows.length; r++){
+    const row = rows[r];
+    let vendorCode='', nmId='', barcode='', cost='';
+    if(hasAny){
+      if(idx.vendorCode != null) vendorCode = String(row[idx.vendorCode] || '').trim();
+      if(idx.nmId       != null) nmId       = String(row[idx.nmId] || '').trim();
+      if(idx.barcode    != null) barcode    = String(row[idx.barcode] || '').trim();
+      if(idx.cost       != null) cost       = String(row[idx.cost] || '').trim().replace(/\s+/g,'').replace(',', '.');
+    }else{
+      // без заголовков: первые 4 ячейки
+      vendorCode = String(row[0] || '').trim();
+      nmId       = String(row[1] || '').trim();
+      barcode    = String(row[2] || '').trim();
+      cost       = String(row[3] || '').trim().replace(/\s+/g,'').replace(',', '.');
+    }
+    const c = parseFloat(cost);
+    if(!vendorCode && !nmId && !barcode) continue;
+    if(!isFinite(c) || c < 0) continue;
+    out.push({ vendorCode, nmId: nmId ? Number(nmId) : '', barcode, cost: c });
+  }
+  return out;
+}
+
+// Индексирует товары дашборда по всем трём ключам сразу.
+// Базовый goods из state.goods (то, что пришло из WB); vendorCode==article, nmId==goods[i].nmId.
+// Если у товара нет barcode — используем пустую строку (сопоставление по barcode тогда не сработает).
+function buildGoodsIndex(){
+  const byVendor = new Map(), byNmId = new Map(), byBarcode = new Map();
+  // Бар-коды берём из дополнительного кэша, если заказчик их положил туда раньше
+  // (поле wb_barcodes — необязательное, заполняется отдельной кнопкой, если будет).
+  const barcodes = JSON.parse(localStorage.getItem('wb_barcodes') || '{}'); // article -> [barcode,...]
+  (state.goods || []).forEach(g => {
+    if(g.article) byVendor.set(String(g.article).trim(), g);
+    if(g.nmId) byNmId.set(Number(g.nmId), g);
+    (barcodes[g.article] || []).forEach(bc => byBarcode.set(String(bc).trim(), g));
+  });
+  return { byVendor, byNmId, byBarcode };
+}
+
+// Применяет распарсенные строки к state.costs. Возвращает отчёт.
+function applyCosts(rows){
+  const idx = buildGoodsIndex();
+  const matched = [], unmatched = [], invalid = [];
+  rows.forEach((r, i) => {
+    let g = null, by = '';
+    if(r.barcode && (g = idx.byBarcode.get(String(r.barcode).trim()))){ by = 'barcode'; }
+    else if(r.nmId && (g = idx.byNmId.get(Number(r.nmId)))){ by = 'nmId'; }
+    else if(r.vendorCode && (g = idx.byVendor.get(String(r.vendorCode).trim()))){ by = 'vendorCode'; }
+    if(g){
+      state.costs[g.article] = r.cost;
+      matched.push({ row: i+2, article: g.article, name: g.name, cost: r.cost, by });
+    }else{
+      unmatched.push({ row: i+2, vendorCode: r.vendorCode, nmId: r.nmId, barcode: r.barcode, cost: r.cost });
+    }
+  });
+  localStorage.setItem('wb_costs', JSON.stringify(state.costs));
+  return { matched, unmatched, invalid };
+}
+
+function renderImportReport(rep){
+  const el = $('#importReport');
+  if(!el) return;
+  let html = `<b>Импорт:</b> ${rep.matched.length} сопоставлено, ${rep.unmatched.length} не найдено.`;
+  if(rep.unmatched.length){
+    html += `<br><span style="color:var(--warn,#c66)">Не сопоставлено (нет такого артикула/barcode/nmId в текущих товарах):</span>`;
+    html += '<ul style="margin:4px 0 0 16px;max-height:120px;overflow:auto;font-size:12px">';
+    rep.unmatched.slice(0, 50).forEach(u => {
+      html += `<li>строка ${u.row}: <code>${u.vendorCode||'—'}</code> / <code>${u.nmId||'—'}</code> / <code>${u.barcode||'—'}</code> → ${u.cost} ₽</li>`;
+    });
+    if(rep.unmatched.length > 50) html += `<li>…и ещё ${rep.unmatched.length - 50}</li>`;
+    html += '</ul>';
+    html += `<div class="hint" style="margin-top:4px">Подсказка: проверь, что нужный товар есть в дашборде (Настройки → «Товары»). Если его нет — обнови данные из WB (⟳).</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function exportCostsCSV(){
+  const idx = buildGoodsIndex();
+  // Соберём все известные товары и текущие себестоимости
+  const goods = state.goods && state.goods.length ? state.goods : [];
+  if(!goods.length){ toast('Нет товаров для экспорта. Загрузи данные из WB или демо.', true); return; }
+  const lines = ['vendorCode,nmId,name,cost'];
+  goods.forEach(g => {
+    const c = state.costs[g.article] != null ? state.costs[g.article] : '';
+    // CSV: кавычки, если в поле есть запятая/кавычка
+    const esc = s => /[",\n]/.test(s) ? `"${String(s).replace(/"/g,'""')}"` : s;
+    lines.push([esc(g.article||''), esc(g.nmId||''), esc(g.name||''), c].join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'costs-current.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Себестоимости выгружены в costs-current.csv');
+}
+
+// Навешиваем обработчики один раз при загрузке страницы
+function bindCostImport(){
+  const btn = $('#importCostBtn'); const inp = $('#importCostFile');
+  if(!btn || !inp) return;
+  btn.onclick = () => inp.click();
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try{
+        const rows = readCostsCSV(String(r.result || ''));
+        if(!rows.length){ toast('CSV пустой или нет распознанных строк', true); return; }
+        const rep = applyCosts(rows);
+        renderCostTable(); renderAll();
+        renderImportReport(rep);
+        toast(`Импорт: ${rep.matched.length} из ${rows.length} строк`, false, 2500);
+      }catch(e){ toast('Ошибка чтения CSV: '+e.message, true); }
+      inp.value = '';
+    };
+    r.readAsText(f, 'utf-8');
+  };
+  const exp = $('#exportCostBtn');
+  if(exp) exp.onclick = exportCostsCSV;
+}
+
+function openSettings(){
+  selectTab('tab-goods');
+  renderCostTable();
+  dlg.showModal();
+}
+function selectTab(id){
+  document.querySelectorAll('#dlgTabs button').forEach(b=>b.ariaSelected = b.dataset.tab===id?'true':'false');
+  document.querySelectorAll('.dlg-tab').forEach(t=>t.classList.toggle('active', t.id===id));
+}
+$('#settingsBtn').onclick=openSettings;
+$('#dlgCancel').onclick=()=>dlg.close();
+$('#dlgTabs').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) selectTab(b.dataset.tab); });
+
+// «Готово» — закрыть диалог (себестоимость и типы сохраняются сразу при вводе)
+$('#dlgSave').onclick=()=>dlg.close();
+// Новый тип — добавить в список
+$('#addTypeBtn').onclick=()=>{
+  const name=prompt('Название нового типа товара:');
+  if(!name) return;
+  const t=name.trim();
+  if(!t) return;
+  if(!state.extraTypes.includes(t) && !DEMO_TYPES.includes(t)){
+    state.extraTypes.push(t);
+    localStorage.setItem('wb_extra_types',JSON.stringify(state.extraTypes));
+  }
+  renderCostTable();
+  toast('Тип «'+t+'» добавлен');
+};
+
+/* ---------- Прочие кнопки ---------- */
+$('#themeBtn').onclick=()=>{ const cur=document.documentElement.dataset.theme; const next=cur==='dark'?'light':cur==='light'?'':'dark'; if(next) document.documentElement.dataset.theme=next; else delete document.documentElement.dataset.theme; localStorage.setItem('wb_theme',next); applyThemeIcon(); };
+function applyThemeIcon(){ const cur=document.documentElement.dataset.theme|| (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'); $('#themeBtn').textContent=cur==='dark'?'☀':'🌙'; }
+// Период теперь всегда задаётся полями «с/по» — переключать нечего
+function toggleRangeInputs(){ /* поля от/по видны всегда (упрощение 27.10) */ }
+// Обновление выпадающего списка типов под текущие товары
+/* ---------- Иерархический выбор товара (один фильтр: тип → артикул) ---------- */
+const GROUP_NONE='Без группы';
+// группы собираются ТОЛЬКО из текущих данных (artType товара) — пустые
+// категории из старых данных не показываются; товары без назначенного
+// типа попадают в «Без группы»
+const goodOpenGroups=new Set();
+function buildGoodMenu(){
+  const menu=$('#goodMenu'); if(!menu) return;
+  const cur=state.artFilter;
+  const groups={};
+  state.goods.forEach(g=>{ const t=groupOf(g); (groups[t]=groups[t]||[]).push(g); });
+  const names=Object.keys(groups).sort((a,b)=>(a==='Без группы')-(b==='Без группы')||a.localeCompare(b,'ru'));
+  let html=`<button type="button" class="good-all${cur==='all'?' good-on':''}" data-good="all">Все товары`
+    +` <span class="good-cnt">${state.goods.length}</span></button>`;
+  names.forEach(n=>{
+    const items=groups[n].slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'ru'));
+    const open=goodOpenGroups.has(n);
+    html+=`<button type="button" class="good-group-row${open?' open':''}" data-group="${escHtml(n)}">`
+      +`<span class="good-arrow">▸</span>${escHtml(n)} <span class="good-cnt">${items.length}</span></button>`;
+    html+=`<div class="good-items${open?' open':''}">`;
+    html+=`<button type="button" class="good-item${cur==='type:'+n?' sel-on':''}" data-good="type:${escHtml(n)}">— вся группа</button>`;
+    items.forEach(g=>{
+      const art=String(g.article);
+      const nm=String(g.name||'Товар'); const shown=nm.length>32?nm.slice(0,31)+'…':nm;
+      html+=`<button type="button" class="good-item${String(cur)===art?' sel-on':''}" data-good="${escHtml(art)}">`
+        +`<span>${escHtml(shown)}</span><span class="good-cnt">${escHtml(art)}</span></button>`;
+    });
+    html+='</div>';
+  });
+  if(!state.goods.length) html='<div class="good-item"><span class="good-cnt">данных пока нет</span></div>';
+  menu.innerHTML=html;
+  goodBtnLabel();
+}
+function goodBtnLabel(){
+  const cur=state.artFilter; let text='Все товары';
+  if(String(cur).startsWith('type:')) text=cur.slice(5);
+  else { const g=state.goods.find(x=>String(x.article)===String(cur)); if(g) text=String(g.name||'Товар').slice(0,30); }
+  const lbl=$('#goodBtnText'); if(lbl) lbl.textContent=text;
+}
+function goodPickerClose(){
+  const menu=$('#goodMenu'); if(menu && !menu.hidden){
+    menu.hidden=true; $('#goodBtn').setAttribute('aria-expanded','false');
+  }
+}
+$('#goodBtn').onclick=()=>{
+  const menu=$('#goodMenu');
+  menu.hidden=!menu.hidden;
+  $('#goodBtn').setAttribute('aria-expanded',String(!menu.hidden));
+  if(!menu.hidden) buildGoodMenu();
+};
+$('#goodMenu').addEventListener('click',e=>{
+  const t=e.target.closest('button'); if(!t) return;
+  e.stopPropagation();                 // клик по меню — не «клик мимо»
+                                       // (иначе пересборка меню во время
+                                       // этого же клика закрывала его сама)
+  if(t.classList.contains('good-group-row')){          // стрелка: раскрыть/свернуть группу
+    const n=t.dataset.group;
+    goodOpenGroups.has(n)?goodOpenGroups.delete(n):goodOpenGroups.add(n);
+    buildGoodMenu(); return;
+  }
+  state.artFilter=t.dataset.good;                 // выбор: все / вся группа / артикул
+  buildGoodMenu();                                // подсветка на месте, МЕНЮ НЕ закрываем:
+  renderAll();                                    // можно выбрать следующий товар подряд
+});
+document.addEventListener('click',e=>{ if(!(e.target.closest&&e.target.closest('#goodPicker'))) goodPickerClose(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') goodPickerClose(); });
+$('#fromDate').addEventListener('change',e=>{ state.customFrom=e.target.value?new Date(e.target.value):null; renderAll(); });
+$('#toDate').addEventListener('change',e=>{ state.customTo=e.target.value?new Date(e.target.value):null; renderAll(); });
+$('#exportBtn').onclick=exportCSV;
+$('#csvBtn').onclick=()=>$('#csvFile').click();
+// чтение файла: сначала пробуем UTF-8, если в тексте появились сломанные символы — файл был сохранён старым Excel в кодировке_cp1251, пробуем её
+function smartDecode(buf){
+  const bytes=new Uint8Array(buf);
+  const t=new TextDecoder('utf-8',{fatal:false}).decode(bytes);
+  if(t.indexOf('�')<0) return t;
+  try{ return new TextDecoder('windows-1251').decode(bytes); }catch(e){ return t; }
+}
+$('#csvFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f)return; state.sourceName=f.name; const rd=new FileReader(); rd.onload=()=>{ try{importCSV(smartDecode(rd.result));}catch(err){toast('Ошибка CSV: '+err.message,true);} }; rd.readAsArrayBuffer(f); e.target.value=''; });
+$('#pickCsvBtn').onclick=()=>$('#csvFile').click();
+// выгрузка API = ЗАМЕНА данных, а не долив: продажа-из-api.csv — полная
+// выгрузка за 90 дней, смешивать её дни с другими загрузками нельзя
+// (иначе имитационные дни останутся вперемешку с реальными)
+// единая точка: взять выгрузку с сервера и заменить ею данные
+// (false — файла нет или недоступен: file://, сервер не запущен, пуст)
+async function importApiReplace(quiet){
+  try{
+    const res=await fetch('продажи-из-api.csv?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return false;
+    const text=await res.text();
+    if(!text||!text.trim()) return false;
+    localStorage.removeItem('wb_csv_cache');
+    state.sourceName='продажи-из-api.csv';
+    importCSV(text, !!quiet);
+    return true;
+  }catch(e){ return false; }            // file:// или сервер не запущен
+}
+// Сколько суток прошло с последнего дня в загруженных данных
+// (999 — дат нет вообще: считать устаревшими)
+function staleDailyDays(){
+  let newest='';
+  (state.daily||[]).forEach(d=>{ if(d.date>newest) newest=d.date; });
+  if(!newest) return 999;
+  return (Date.now()-new Date(newest+'T00:00:00').getTime())/86400000;
+}
+$('#loadApiBtn').onclick=async()=>{
+  try{
+    if(!await importApiReplace()) throw new Error('файл продажи-из-api.csv недоступен — откройте дашборд с сервера (python3 serve.py)');
+    // названия выгрузка не несёт — доставляем из карты артикулов,
+    // остатки дошиваем из свежего среза API (importCSV их затёр)
+    state.artMap=await loadArtMap();
+    applyArtNames(state.artMap);
+    const stamp=await loadApiStock();
+    if(stamp){
+      state.apiStamp=stamp;
+      Object.keys(stamp.byArt).forEach(a=>{ state.stockByArticle[a]=stamp.byArt[a]; });
+    }
+    state.lastSync=new Date().toLocaleString('ru-RU');
+    try{ localStorage.setItem('wb_csv_cache',JSON.stringify({goods:state.goods,daily:state.daily,stockByArticle:state.stockByArticle||{},stockAt:{},lastSync:state.lastSync,sourceName:state.sourceName,lastIngest:state.lastIngest})); }catch(e){ /* не критично */ }
+    renderAll();
+    dlg.close();
+  }catch(e){ toast('Ошибка: '+e.message,true); }
+};
+// Пример данных для проверки (base64 CSV: 30 товаров, 2 недели)
+const SAMPLE_CSV_B64 = 'ZGF0ZSxhcnRpY2xlLG5hbWUsdHlwZSxxdHkscmV2ZW51ZSxjb21taXNzaW9uLHJldHVybnMsYWRfc3BlbmQsc3RvY2ssY29zdA0KMjAyNi0wOC0xNixTUFItUkItMizQoNC10LfQuNC90L7QstGL0Lkg0LHQuNC90YIgMiDQvCzQpNC40YLQvdC10YEsMyw3NDcwLDEzMDksMSwwLDEwLDEzNTANCjIwMjYtMDgtMTcsU1BSLVJCLTIs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDIg0Lws0KTQuNGC0L3QtdGBLDMsNzQ3MCwxMjE2LDEsNzU4LDksMTM1MA0KMjAyNi0wOC0xOCxTUFItUkItMizQoNC10LfQuNC90L7QstGL0Lkg0LHQuNC90YIgMiDQvCzQpNC40YLQvdC10YEsMiw0OTgwLDg4MywwLDg4MSw4LDEzNTANCjIwMjYtMDgtMTksU1BSLVJCLTIs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDIg0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCw4LDEzNTANCjIwMjYtMDgtMjAsU1BSLVJCLTIs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDIg0Lws0KTQuNGC0L3QtdGBLDEsMjQ5MCw0MTIsMCw2MDQsOCwxMzUwDQoyMDI2LTA4LTIxLFNQUi1SQi0yLNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiAyINC8LNCk0LjRgtC90LXRgSwxLDI0OTAsNDAzLDAsMCw4LDEzNTANCjIwMjYtMDgtMjIsU1BSLVJCLTIs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDIg0Lws0KTQuNGC0L3QtdGBLDEsMjQ5MCw0NDIsMCwzMjYsOCwxMzUwDQoyMDI2LTA4LTIzLFNQUi1SQi0yLNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiAyINC8LNCk0LjRgtC90LXRgSwzLDc0NzAsMTI1MCwwLDUxMSw3LDEzNTANCjIwMjYtMDgtMjQsU1BSLVJCLTIs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDIg0Lws0KTQuNGC0L3QtdGBLDIsNDk4MCw4MTQsMCw3MDEsNiwxMzUwDQoyMDI2LTA4LTI1LFNQUi1SQi0yLNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiAyINC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDAsNiwxMzUwDQoyMDI2LTA4LTI2LFNQUi1SQi0yLNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiAyINC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDY1MCw2LDEzNTANCjIwMjYtMDgtMjcsU1BSLVJCLTIs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDIg0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsNzY5LDYsMTM1MA0KMjAyNi0wOC0yOCxTUFItUkItMizQoNC10LfQuNC90L7QstGL0Lkg0LHQuNC90YIgMiDQvCzQpNC40YLQvdC10YEsMyw3NDcwLDEzNTIsMSw4OTQsNSwxMzUwDQoyMDI2LTA4LTI5LFNQUi1SQi0yLNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiAyINC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDYyOCw1LDEzNTANCjIwMjYtMDgtMTYsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDEsNjkwLDExNiwwLDc5NSw4MywzNzMNCjIwMjYtMDgtMTcsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsODA0LDgzLDM3Mw0KMjAyNi0wOC0xOCxTUFItUkItNSzQoNC10LfQuNC90L7QstGL0Lkg0LHQuNC90YIgNSDQvCzQpNC40YLQvdC10YEsMiwxMzgwLDIzNiwwLDg2NSw4MiwzNzMNCjIwMjYtMDgtMTksU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCw4MiwzNzMNCjIwMjYtMDgtMjAsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDEsNjkwLDExMCwwLDM4Myw4MiwzNzMNCjIwMjYtMDgtMjEsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDIsMTM4MCwyNDksMCw1ODYsODEsMzczDQoyMDI2LTA4LTIyLFNQUi1SQi01LNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiA1INC8LNCk0LjRgtC90LXRgSwxLDY5MCwxMjksMCw0MDIsODEsMzczDQoyMDI2LTA4LTIzLFNQUi1SQi01LNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiA1INC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDEzMSw4MSwzNzMNCjIwMjYtMDgtMjQsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCw4MSwzNzMNCjIwMjYtMDgtMjUsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCw4MSwzNzMNCjIwMjYtMDgtMjYsU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDEsNjkwLDExMywwLDAsODEsMzczDQoyMDI2LTA4LTI3LFNQUi1SQi01LNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiA1INC8LNCk0LjRgtC90LXRgSwxLDY5MCwxMTMsMCw4OTQsODEsMzczDQoyMDI2LTA4LTI4LFNQUi1SQi01LNCg0LXQt9C40L3QvtCy0YvQuSDQsdC40L3RgiA1INC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDI5Nyw4MSwzNzMNCjIwMjYtMDgtMjksU1BSLVJCLTUs0KDQtdC30LjQvdC+0LLRi9C5INCx0LjQvdGCIDUg0Lws0KTQuNGC0L3QtdGBLDEsNjkwLDExMSwwLDUxMyw4MSwzNzMNCjIwMjYtMDgtMTYsU1BSLVRQLNCh0LrQsNC60LDQu9C60LAg0YHQutC+0YDQvtGB0YLQvdCw0Y8s0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCwxMDIsNTk5DQoyMDI2LTA4LTE3LFNQUi1UUCzQodC60LDQutCw0LvQutCwINGB0LrQvtGA0L7RgdGC0L3QsNGPLNCk0LjRgtC90LXRgSwyLDIzODAsNDM2LDAsNzE5LDEwMSw1OTkNCjIwMjYtMDgtMTgsU1BSLVRQLNCh0LrQsNC60LDQu9C60LAg0YHQutC+0YDQvtGB0YLQvdCw0Y8s0KTQuNGC0L3QtdGBLDIsMjM4MCw0NDIsMCw3NTEsMTAwLDU5OQ0KMjAyNi0wOC0xOSxTUFItVFAs0KHQutCw0LrQsNC70LrQsCDRgdC60L7RgNC+0YHRgtC90LDRjyzQpNC40YLQvdC10YEsMywzNTcwLDYyNywwLDEwNCw5OSw1OTkNCjIwMjYtMDgtMjAsU1BSLVRQLNCh0LrQsNC60LDQu9C60LAg0YHQutC+0YDQvtGB0YLQvdCw0Y8s0KTQuNGC0L3QtdGBLDMsMzU3MCw2NzQsMCw4NDgsOTgsNTk5DQoyMDI2LTA4LTIxLFNQUi1UUCzQodC60LDQutCw0LvQutCwINGB0LrQvtGA0L7RgdGC0L3QsNGPLNCk0LjRgtC90LXRgSwyLDIzODAsNDA3LDAsMCw5Nyw1OTkNCjIwMjYtMDgtMjIsU1BSLVRQLNCh0LrQsNC60LDQu9C60LAg0YHQutC+0YDQvtGB0YLQvdCw0Y8s0KTQuNGC0L3QtdGBLDAsMCwwLDAsNzY5LDk3LDU5OQ0KMjAyNi0wOC0yMyxTUFItVFAs0KHQutCw0LrQsNC70LrQsCDRgdC60L7RgNC+0YHRgtC90LDRjyzQpNC40YLQvdC10YEsMywzNTcwLDY1NywwLDAsOTYsNTk5DQoyMDI2LTA4LTI0LFNQUi1UUCzQodC60LDQutCw0LvQutCwINGB0LrQvtGA0L7RgdGC0L3QsNGPLNCk0LjRgtC90LXRgSwxLDExOTAsMjA3LDAsMCw5Niw1OTkNCjIwMjYtMDgtMjUsU1BSLVRQLNCh0LrQsNC60LDQu9C60LAg0YHQutC+0YDQvtGB0YLQvdCw0Y8s0KTQuNGC0L3QtdGBLDAsMCwwLDAsODc3LDk2LDU5OQ0KMjAyNi0wOC0yNixTUFItVFAs0KHQutCw0LrQsNC70LrQsCDRgdC60L7RgNC+0YHRgtC90LDRjyzQpNC40YLQvdC10YEsMSwxMTkwLDE5NiwwLDAsOTYsNTk5DQoyMDI2LTA4LTI3LFNQUi1UUCzQodC60LDQutCw0LvQutCwINGB0LrQvtGA0L7RgdGC0L3QsNGPLNCk0LjRgtC90LXRgSwwLDAsMCwwLDIwMCw5Niw1OTkNCjIwMjYtMDgtMjgsU1BSLVRQLNCh0LrQsNC60LDQu9C60LAg0YHQutC+0YDQvtGB0YLQvdCw0Y8s0KTQuNGC0L3QtdGBLDQsNDc2MCw4NDAsMCwwLDk0LDU5OQ0KMjAyNi0wOC0yOSxTUFItVFAs0KHQutCw0LrQsNC70LrQsCDRgdC60L7RgNC+0YHRgtC90LDRjyzQpNC40YLQvdC10YEsMCwwLDAsMCw1MTIsOTQsNTk5DQoyMDI2LTA4LTE2LFNQUi1ZTSzQmtC+0LLRgNC40Log0LTQu9GPINC50L7Qs9C4IDYg0LzQvCzQpNC40YLQvdC10YEsMCwwLDAsMCwzNDcsMTEwLDU1Mw0KMjAyNi0wOC0xNyxTUFItWU0s0JrQvtCy0YDQuNC6INC00LvRjyDQudC+0LPQuCA2INC80Lws0KTQuNGC0L3QtdGBLDIsMjM4MCwzODUsMCw4MTYsMTA5LDU1Mw0KMjAyNi0wOC0xOCxTUFItWU0s0JrQvtCy0YDQuNC6INC00LvRjyDQudC+0LPQuCA2INC80Lws0KTQuNGC0L3QtdGBLDEsMTE5MCwyMjIsMCwwLDEwOSw1NTMNCjIwMjYtMDgtMTksU1BSLVlNLNCa0L7QstGA0LjQuiDQtNC70Y8g0LnQvtCz0LggNiDQvNC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDcxNywxMDksNTUzDQoyMDI2LTA4LTIwLFNQUi1ZTSzQmtC+0LLRgNC40Log0LTQu9GPINC50L7Qs9C4IDYg0LzQvCzQpNC40YLQvdC10YEsMCwwLDAsMCwxNzksMTA5LDU1Mw0KMjAyNi0wOC0yMSxTUFItWU0s0JrQvtCy0YDQuNC6INC00LvRjyDQudC+0LPQuCA2INC80Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsNDc2LDEwOSw1NTMNCjIwMjYtMDgtMjIsU1BSLVlNLNCa0L7QstGA0LjQuiDQtNC70Y8g0LnQvtCz0LggNiDQvNC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDAsMTA5LDU1Mw0KMjAyNi0wOC0yMyxTUFItWU0s0JrQvtCy0YDQuNC6INC00LvRjyDQudC+0LPQuCA2INC80Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCwxMDksNTUzDQoyMDI2LTA4LTI0LFNQUi1ZTSzQmtC+0LLRgNC40Log0LTQu9GPINC50L7Qs9C4IDYg0LzQvCzQpNC40YLQvdC10YEsMywzNTcwLDYzNiwwLDAsMTA4LDU1Mw0KMjAyNi0wOC0yNSxTUFItWU0s0JrQvtCy0YDQuNC6INC00LvRjyDQudC+0LPQuCA2INC80Lws0KTQuNGC0L3QtdGBLDIsMjM4MCw0MzgsMCwyODMsMTA3LDU1Mw0KMjAyNi0wOC0yNixTUFItWU0s0JrQvtCy0YDQuNC6INC00LvRjyDQudC+0LPQuCA2INC80Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMjQ2LDEwNyw1NTMNCjIwMjYtMDgtMjcsU1BSLVlNLNCa0L7QstGA0LjQuiDQtNC70Y8g0LnQvtCz0LggNiDQvNC8LNCk0LjRgtC90LXRgSwyLDIzODAsNDA5LDAsNjMwLDEwNiw1NTMNCjIwMjYtMDgtMjgsU1BSLVlNLNCa0L7QstGA0LjQuiDQtNC70Y8g0LnQvtCz0LggNiDQvNC8LNCk0LjRgtC90LXRgSwxLDExOTAsMjE4LDAsNjA4LDEwNiw1NTMNCjIwMjYtMDgtMjksU1BSLVlNLNCa0L7QstGA0LjQuiDQtNC70Y8g0LnQvtCz0LggNiDQvNC8LNCk0LjRgtC90LXRgSwzLDM1NzAsNTg2LDAsNjkyLDEwNSw1NTMNCjIwMjYtMDgtMTYsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDIsMTk4MCwzMzcsMCwwLDg5LDQ1NQ0KMjAyNi0wOC0xNyxTUFItSEEtMC41LCLQo9GC0Y/QttC10LvQuNGC0LXQu9C4INC00LvRjyDRgNGD0LogMCw1INC60LMgKNC/0LDRgNCwKSIs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDg5LDQ1NQ0KMjAyNi0wOC0xOCxTUFItSEEtMC41LCLQo9GC0Y/QttC10LvQuNGC0LXQu9C4INC00LvRjyDRgNGD0LogMCw1INC60LMgKNC/0LDRgNCwKSIs0KHQuNC70L7QstGL0LUsMCwwLDAsMCw1MDAsODksNDU1DQoyMDI2LTA4LTE5LFNQUi1IQS0wLjUsItCj0YLRj9C20LXQu9C40YLQtdC70Lgg0LTQu9GPINGA0YPQuiAwLDUg0LrQsyAo0L/QsNGA0LApIizQodC40LvQvtCy0YvQtSwwLDAsMCwwLDg3Nyw4OSw0NTUNCjIwMjYtMDgtMjAsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw4OSw0NTUNCjIwMjYtMDgtMjEsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNzUyLDg5LDQ1NQ0KMjAyNi0wOC0yMixTUFItSEEtMC41LCLQo9GC0Y/QttC10LvQuNGC0LXQu9C4INC00LvRjyDRgNGD0LogMCw1INC60LMgKNC/0LDRgNCwKSIs0KHQuNC70L7QstGL0LUsMSw5OTAsMTc5LDAsMCw4OSw0NTUNCjIwMjYtMDgtMjMsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMTM5LDg5LDQ1NQ0KMjAyNi0wOC0yNCxTUFItSEEtMC41LCLQo9GC0Y/QttC10LvQuNGC0LXQu9C4INC00LvRjyDRgNGD0LogMCw1INC60LMgKNC/0LDRgNCwKSIs0KHQuNC70L7QstGL0LUsMywyOTcwLDU1MSwwLDAsODgsNDU1DQoyMDI2LTA4LTI1LFNQUi1IQS0wLjUsItCj0YLRj9C20LXQu9C40YLQtdC70Lgg0LTQu9GPINGA0YPQuiAwLDUg0LrQsyAo0L/QsNGA0LApIizQodC40LvQvtCy0YvQtSwwLDAsMCwwLDUzNCw4OCw0NTUNCjIwMjYtMDgtMjYsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw4OCw0NTUNCjIwMjYtMDgtMjcsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw4OCw0NTUNCjIwMjYtMDgtMjgsU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDEsOTkwLDE2NywwLDIyNiw4OCw0NTUNCjIwMjYtMDgtMjksU1BSLUhBLTAuNSwi0KPRgtGP0LbQtdC70LjRgtC10LvQuCDQtNC70Y8g0YDRg9C6IDAsNSDQutCzICjQv9Cw0YDQsCkiLNCh0LjQu9C+0LLRi9C1LDMsMjk3MCw0OTgsMSwwLDg3LDQ1NQ0KMjAyNi0wOC0xNixTUFItSEEtMSzQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMSDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMiwyOTgwLDU1MSwwLDQ5NSw2MSw3MTENCjIwMjYtMDgtMTcsU1BSLUhBLTEs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDEg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDIsMjk4MCw1MDcsMCw2NjAsNjAsNzExDQoyMDI2LTA4LTE4LFNQUi1IQS0xLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAxINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsNjAsNzExDQoyMDI2LTA4LTE5LFNQUi1IQS0xLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAxINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsNjAsNzExDQoyMDI2LTA4LTIwLFNQUi1IQS0xLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAxINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwxLDE0OTAsMjY4LDAsMCw2MCw3MTENCjIwMjYtMDgtMjEsU1BSLUhBLTEs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDEg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMjA5LDYwLDcxMQ0KMjAyNi0wOC0yMixTUFItSEEtMSzQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMSDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMCwwLDAsMCwyODAsNjAsNzExDQoyMDI2LTA4LTIzLFNQUi1IQS0xLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAxINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwxLDE0OTAsMjU0LDAsMCw2MCw3MTENCjIwMjYtMDgtMjQsU1BSLUhBLTEs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDEg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsODQsNjAsNzExDQoyMDI2LTA4LTI1LFNQUi1IQS0xLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAxINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwyLDI5ODAsNTEzLDAsMCw1OSw3MTENCjIwMjYtMDgtMjYsU1BSLUhBLTEs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDEg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNjk1LDU5LDcxMQ0KMjAyNi0wOC0yNyxTUFItSEEtMSzQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMSDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMSwxNDkwLDI3OCwwLDM0Nyw1OSw3MTENCjIwMjYtMDgtMjgsU1BSLUhBLTEs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDEg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDEsMTQ5MCwyNDAsMCw4MTEsNTksNzExDQoyMDI2LTA4LTI5LFNQUi1IQS0xLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAxINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDE5NCw1OSw3MTENCjIwMjYtMDgtMTYsU1BSLUhBLTIs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDIg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDEsNjkwLDExMSwwLDg2NywxMTksMzYyDQoyMDI2LTA4LTE3LFNQUi1IQS0yLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAyINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsMTE5LDM2Mg0KMjAyNi0wOC0xOCxTUFItSEEtMizQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMiDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMCwwLDAsMCwxMzcsMTE5LDM2Mg0KMjAyNi0wOC0xOSxTUFItSEEtMizQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMiDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMiwxMzgwLDIyNSwwLDY5MSwxMTgsMzYyDQoyMDI2LTA4LTIwLFNQUi1IQS0yLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAyINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDI2OSwxMTgsMzYyDQoyMDI2LTA4LTIxLFNQUi1IQS0yLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAyINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwyLDEzODAsMjU2LDAsMCwxMTcsMzYyDQoyMDI2LTA4LTIyLFNQUi1IQS0yLNCT0LDQvdGC0LXQu9C4INC+0LHRgNC10LfQuNC90LXQvdC90YvQtSAyINC60LMgKNC/0LDRgNCwKSzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsMTE3LDM2Mg0KMjAyNi0wOC0yMyxTUFItSEEtMizQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMiDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMSw2OTAsMTI0LDAsNTg5LDExNywzNjINCjIwMjYtMDgtMjQsU1BSLUhBLTIs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDIg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDIsMTM4MCwyMjUsMCwwLDExNiwzNjINCjIwMjYtMDgtMjUsU1BSLUhBLTIs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDIg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDMsMjA3MCwzNDksMCw3MDksMTE1LDM2Mg0KMjAyNi0wOC0yNixTUFItSEEtMizQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMiDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMywyMDcwLDM2MSwwLDAsMTE0LDM2Mg0KMjAyNi0wOC0yNyxTUFItSEEtMizQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMiDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMCwwLDAsMCw4OTUsMTE0LDM2Mg0KMjAyNi0wOC0yOCxTUFItSEEtMizQk9Cw0L3RgtC10LvQuCDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LUgMiDQutCzICjQv9Cw0YDQsCks0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDExNCwzNjINCjIwMjYtMDgtMjksU1BSLUhBLTIs0JPQsNC90YLQtdC70Lgg0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C1IDIg0LrQsyAo0L/QsNGA0LApLNCh0LjQu9C+0LLRi9C1LDMsMjA3MCwzNTQsMCw1OTgsMTEzLDM2Mg0KMjAyNi0wOC0xNixTUFItUEwtNSzQkdC70LjQvSDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNjM5LDM0LDEwNjENCjIwMjYtMDgtMTcsU1BSLVBMLTUs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwyLDM5ODAsNjg2LDAsMTc5LDMzLDEwNjENCjIwMjYtMDgtMTgsU1BSLVBMLTUs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwxLDE5OTAsMzc1LDAsMCwzMywxMDYxDQoyMDI2LTA4LTE5LFNQUi1QTC01LNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDMzLDEwNjENCjIwMjYtMDgtMjAsU1BSLVBMLTUs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwzLDU5NzAsMTEyMSwwLDc4MCwzMiwxMDYxDQoyMDI2LTA4LTIxLFNQUi1QTC01LNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMyw1OTcwLDEwNzQsMSwyMDIsMzEsMTA2MQ0KMjAyNi0wOC0yMixTUFItUEwtNSzQkdC70LjQvSDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDMsNTk3MCwxMDk2LDAsMTA0LDMwLDEwNjENCjIwMjYtMDgtMjMsU1BSLVBMLTUs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwxLDE5OTAsMzcxLDAsMjQ3LDMwLDEwNjENCjIwMjYtMDgtMjQsU1BSLVBMLTUs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDUg0LrQsyzQodC40LvQvtCy0YvQtSw1LDk5NTAsMTYzMywwLDQ3OCwyOCwxMDYxDQoyMDI2LTA4LTI1LFNQUi1QTC01LNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMyw1OTcwLDk4NiwwLDMxMSwyNywxMDYxDQoyMDI2LTA4LTI2LFNQUi1QTC01LNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMiwzOTgwLDY2NSwwLDYyOCwyNiwxMDYxDQoyMDI2LTA4LTI3LFNQUi1QTC01LNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDI2LDEwNjENCjIwMjYtMDgtMjgsU1BSLVBMLTUs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDcwMywyNiwxMDYxDQoyMDI2LTA4LTI5LFNQUi1QTC01LNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMiwzOTgwLDY2NiwwLDAsMjUsMTA2MQ0KMjAyNi0wOC0xNixTUFItUEwtMTAs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDEwINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCw1MTAsMTA4LDQ0Mw0KMjAyNi0wOC0xNyxTUFItUEwtMTAs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDEwINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDEwOCw0NDMNCjIwMjYtMDgtMTgsU1BSLVBMLTEwLNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSAxMCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNzg4LDEwOCw0NDMNCjIwMjYtMDgtMTksU1BSLVBMLTEwLNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSAxMCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCwxMDgsNDQzDQoyMDI2LTA4LTIwLFNQUi1QTC0xMCzQkdC70LjQvSDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LkgMTAg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDk4LDEwOCw0NDMNCjIwMjYtMDgtMjEsU1BSLVBMLTEwLNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSAxMCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNDY4LDEwOCw0NDMNCjIwMjYtMDgtMjIsU1BSLVBMLTEwLNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSAxMCDQutCzLNCh0LjQu9C+0LLRi9C1LDEsOTkwLDE4MywwLDg3NywxMDgsNDQzDQoyMDI2LTA4LTIzLFNQUi1QTC0xMCzQkdC70LjQvSDQvtCx0YDQtdC30LjQvdC10L3QvdGL0LkgMTAg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsMTA4LDQ0Mw0KMjAyNi0wOC0yNCxTUFItUEwtMTAs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDEwINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCw3MDcsMTA4LDQ0Mw0KMjAyNi0wOC0yNSxTUFItUEwtMTAs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDEwINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDEwOCw0NDMNCjIwMjYtMDgtMjYsU1BSLVBMLTEwLNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSAxMCDQutCzLNCh0LjQu9C+0LLRi9C1LDEsOTkwLDE2NywwLDAsMTA4LDQ0Mw0KMjAyNi0wOC0yNyxTUFItUEwtMTAs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDEwINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwxNzIsMTA4LDQ0Mw0KMjAyNi0wOC0yOCxTUFItUEwtMTAs0JHQu9C40L0g0L7QsdGA0LXQt9C40L3QtdC90L3Ri9C5IDEwINC60LMs0KHQuNC70L7QstGL0LUsMiwxOTgwLDMzMCwwLDg5LDEwNyw0NDMNCjIwMjYtMDgtMjksU1BSLVBMLTEwLNCR0LvQuNC9INC+0LHRgNC10LfQuNC90LXQvdC90YvQuSAxMCDQutCzLNCh0LjQu9C+0LLRi9C1LDIsMTk4MCwzNzQsMCw4MDUsMTA2LDQ0Mw0KMjAyNi0wOC0xNixTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSw0LDE3OTYwLDMxNDIsMSw0MjQsNiwyMTUwDQoyMDI2LTA4LTE3LFNQUi1HUizQrdGB0L/QsNC90LTQtdGALdCz0YDQuNC/LNCh0LjQu9C+0LLRi9C1LDEsNDQ5MCw4NDMsMCwwLDYsMjE1MA0KMjAyNi0wOC0xOCxTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSwzLDEzNDcwLDIyMzUsMCw2ODYsNSwyMTUwDQoyMDI2LTA4LTE5LFNQUi1HUizQrdGB0L/QsNC90LTQtdGALdCz0YDQuNC/LNCh0LjQu9C+0LLRi9C1LDIsODk4MCwxNjk4LDAsNzUyLDQsMjE1MA0KMjAyNi0wOC0yMCxTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSwxLDQ0OTAsODQ3LDAsMjM0LDQsMjE1MA0KMjAyNi0wOC0yMSxTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDg1OCw0LDIxNTANCjIwMjYtMDgtMjIsU1BSLUdSLNCt0YHQv9Cw0L3QtNC10YAt0LPRgNC40L8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDQsMjE1MA0KMjAyNi0wOC0yMyxTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDgxNiw0LDIxNTANCjIwMjYtMDgtMjQsU1BSLUdSLNCt0YHQv9Cw0L3QtNC10YAt0LPRgNC40L8s0KHQuNC70L7QstGL0LUsMywxMzQ3MCwyMjg4LDAsMCwzLDIxNTANCjIwMjYtMDgtMjUsU1BSLUdSLNCt0YHQv9Cw0L3QtNC10YAt0LPRgNC40L8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDMsMjE1MA0KMjAyNi0wOC0yNixTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSwxLDQ0OTAsNzQxLDAsMCwzLDIxNTANCjIwMjYtMDgtMjcsU1BSLUdSLNCt0YHQv9Cw0L3QtNC10YAt0LPRgNC40L8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCwxODEsMywyMTUwDQoyMDI2LTA4LTI4LFNQUi1HUizQrdGB0L/QsNC90LTQtdGALdCz0YDQuNC/LNCh0LjQu9C+0LLRi9C1LDIsODk4MCwxNjU4LDAsMTIwLDIsMjE1MA0KMjAyNi0wOC0yOSxTUFItR1Is0K3RgdC/0LDQvdC00LXRgC3Qs9GA0LjQvyzQodC40LvQvtCy0YvQtSwxLDQ0OTAsODQyLDAsMCwyLDIxNTANCjIwMjYtMDgtMTYsU1BSLVJULNCt0YHQv9Cw0L3QtNC10YAt0YDQtdC30LjQvdC60LAg0YLRgNGD0LHRh9Cw0YLQsNGPLNCk0LjRgtC90LXRgSwwLDAsMCwwLDAsODUsMTI3MQ0KMjAyNi0wOC0xNyxTUFItUlQs0K3RgdC/0LDQvdC00LXRgC3RgNC10LfQuNC90LrQsCDRgtGA0YPQsdGH0LDRgtCw0Y8s0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCw4NSwxMjcxDQoyMDI2LTA4LTE4LFNQUi1SVCzQrdGB0L/QsNC90LTQtdGALdGA0LXQt9C40L3QutCwINGC0YDRg9Cx0YfQsNGC0LDRjyzQpNC40YLQvdC10YEsMSwyNDkwLDQ3MCwwLDI5NSw4NSwxMjcxDQoyMDI2LTA4LTE5LFNQUi1SVCzQrdGB0L/QsNC90LTQtdGALdGA0LXQt9C40L3QutCwINGC0YDRg9Cx0YfQsNGC0LDRjyzQpNC40YLQvdC10YEsMCwwLDAsMCwwLDg1LDEyNzENCjIwMjYtMDgtMjAsU1BSLVJULNCt0YHQv9Cw0L3QtNC10YAt0YDQtdC30LjQvdC60LAg0YLRgNGD0LHRh9Cw0YLQsNGPLNCk0LjRgtC90LXRgSwzLDc0NzAsMTQwNywwLDAsODQsMTI3MQ0KMjAyNi0wOC0yMSxTUFItUlQs0K3RgdC/0LDQvdC00LXRgC3RgNC10LfQuNC90LrQsCDRgtGA0YPQsdGH0LDRgtCw0Y8s0KTQuNGC0L3QtdGBLDAsMCwwLDAsODYyLDg0LDEyNzENCjIwMjYtMDgtMjIsU1BSLVJULNCt0YHQv9Cw0L3QtNC10YAt0YDQtdC30LjQvdC60LAg0YLRgNGD0LHRh9Cw0YLQsNGPLNCk0LjRgtC90LXRgSwwLDAsMCwwLDIzMCw4NCwxMjcxDQoyMDI2LTA4LTIzLFNQUi1SVCzQrdGB0L/QsNC90LTQtdGALdGA0LXQt9C40L3QutCwINGC0YDRg9Cx0YfQsNGC0LDRjyzQpNC40YLQvdC10YEsMiw0OTgwLDkyMCwwLDU3OCw4MywxMjcxDQoyMDI2LTA4LTI0LFNQUi1SVCzQrdGB0L/QsNC90LTQtdGALdGA0LXQt9C40L3QutCwINGC0YDRg9Cx0YfQsNGC0LDRjyzQpNC40YLQvdC10YEsMSwyNDkwLDQwNCwwLDAsODMsMTI3MQ0KMjAyNi0wOC0yNSxTUFItUlQs0K3RgdC/0LDQvdC00LXRgC3RgNC10LfQuNC90LrQsCDRgtGA0YPQsdGH0LDRgtCw0Y8s0KTQuNGC0L3QtdGBLDIsNDk4MCw4MDYsMCwwLDgyLDEyNzENCjIwMjYtMDgtMjYsU1BSLVJULNCt0YHQv9Cw0L3QtNC10YAt0YDQtdC30LjQvdC60LAg0YLRgNGD0LHRh9Cw0YLQsNGPLNCk0LjRgtC90LXRgSwwLDAsMCwwLDI5Nyw4MiwxMjcxDQoyMDI2LTA4LTI3LFNQUi1SVCzQrdGB0L/QsNC90LTQtdGALdGA0LXQt9C40L3QutCwINGC0YDRg9Cx0YfQsNGC0LDRjyzQpNC40YLQvdC10YEsMCwwLDAsMCw2NjIsODIsMTI3MQ0KMjAyNi0wOC0yOCxTUFItUlQs0K3RgdC/0LDQvdC00LXRgC3RgNC10LfQuNC90LrQsCDRgtGA0YPQsdGH0LDRgtCw0Y8s0KTQuNGC0L3QtdGBLDAsMCwwLDAsNjkzLDgyLDEyNzENCjIwMjYtMDgtMjksU1BSLVJULNCt0YHQv9Cw0L3QtNC10YAt0YDQtdC30LjQvdC60LAg0YLRgNGD0LHRh9Cw0YLQsNGPLNCk0LjRgtC90LXRgSwxLDI0OTAsNDA3LDAsMzIxLDgyLDEyNzENCjIwMjYtMDgtMTYsU1BSLVdCLNCc0Y/RhyDRhNC40YLQsdC+0LsgNTUg0YHQvCzQpNC40YLQvdC10YEsMCwwLDAsMCwyMzQsMzAsOTA3DQoyMDI2LTA4LTE3LFNQUi1XQizQnNGP0Ycg0YTQuNGC0LHQvtC7IDU1INGB0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMCwzMCw5MDcNCjIwMjYtMDgtMTgsU1BSLVdCLNCc0Y/RhyDRhNC40YLQsdC+0LsgNTUg0YHQvCzQpNC40YLQvdC10YEsMCwwLDAsMCwwLDMwLDkwNw0KMjAyNi0wOC0xOSxTUFItV0Is0JzRj9GHINGE0LjRgtCx0L7QuyA1NSDRgdC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDAsMzAsOTA3DQoyMDI2LTA4LTIwLFNQUi1XQizQnNGP0Ycg0YTQuNGC0LHQvtC7IDU1INGB0Lws0KTQuNGC0L3QtdGBLDEsMTk5MCwzMjEsMCw3NTksMzAsOTA3DQoyMDI2LTA4LTIxLFNQUi1XQizQnNGP0Ycg0YTQuNGC0LHQvtC7IDU1INGB0Lws0KTQuNGC0L3QtdGBLDAsMCwwLDAsMjI2LDMwLDkwNw0KMjAyNi0wOC0yMixTUFItV0Is0JzRj9GHINGE0LjRgtCx0L7QuyA1NSDRgdC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDY2MiwzMCw5MDcNCjIwMjYtMDgtMjMsU1BSLVdCLNCc0Y/RhyDRhNC40YLQsdC+0LsgNTUg0YHQvCzQpNC40YLQvdC10YEsMCwwLDAsMCwxMTYsMzAsOTA3DQoyMDI2LTA4LTI0LFNQUi1XQizQnNGP0Ycg0YTQuNGC0LHQvtC7IDU1INGB0Lws0KTQuNGC0L3QtdGBLDIsMzk4MCw3MzQsMCw0MTUsMjksOTA3DQoyMDI2LTA4LTI1LFNQUi1XQizQnNGP0Ycg0YTQuNGC0LHQvtC7IDU1INGB0Lws0KTQuNGC0L3QtdGBLDIsMzk4MCw2NDYsMCwwLDI4LDkwNw0KMjAyNi0wOC0yNixTUFItV0Is0JzRj9GHINGE0LjRgtCx0L7QuyA1NSDRgdC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDIwNywyOCw5MDcNCjIwMjYtMDgtMjcsU1BSLVdCLNCc0Y/RhyDRhNC40YLQsdC+0LsgNTUg0YHQvCzQpNC40YLQvdC10YEsMiwzOTgwLDY4NCwwLDAsMjcsOTA3DQoyMDI2LTA4LTI4LFNQUi1XQizQnNGP0Ycg0YTQuNGC0LHQvtC7IDU1INGB0Lws0KTQuNGC0L3QtdGBLDUsOTk1MCwxODE0LDEsNDIwLDI1LDkwNw0KMjAyNi0wOC0yOSxTUFItV0Is0JzRj9GHINGE0LjRgtCx0L7QuyA1NSDRgdC8LNCk0LjRgtC90LXRgSwwLDAsMCwwLDYwOCwyNSw5MDcNCjIwMjYtMDgtMTYsU1BSLUROLNCc0LDRgdGB0LDQttC90YvQuSDRgNC+0LvQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCwzNzksNSwxNTIzDQoyMDI2LTA4LTE3LFNQUi1ETizQnNCw0YHRgdCw0LbQvdGL0Lkg0YDQvtC70LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDEsMjk5MCw0ODMsMCwwLDUsMTUyMw0KMjAyNi0wOC0xOCxTUFItRE4s0JzQsNGB0YHQsNC20L3Ri9C5INGA0L7Qu9C40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwxLDI5OTAsNTQ1LDAsMCw1LDE1MjMNCjIwMjYtMDgtMTksU1BSLUROLNCc0LDRgdGB0LDQttC90YvQuSDRgNC+0LvQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCwwLDUsMTUyMw0KMjAyNi0wOC0yMCxTUFItRE4s0JzQsNGB0YHQsNC20L3Ri9C5INGA0L7Qu9C40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwyLDU5ODAsMTEwMSwwLDc2Nyw0LDE1MjMNCjIwMjYtMDgtMjEsU1BSLUROLNCc0LDRgdGB0LDQttC90YvQuSDRgNC+0LvQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCw1NzgsNCwxNTIzDQoyMDI2LTA4LTIyLFNQUi1ETizQnNCw0YHRgdCw0LbQvdGL0Lkg0YDQvtC70LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDAsMCwwLDAsNjA1LDQsMTUyMw0KMjAyNi0wOC0yMyxTUFItRE4s0JzQsNGB0YHQsNC20L3Ri9C5INGA0L7Qu9C40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDI0MSw0LDE1MjMNCjIwMjYtMDgtMjQsU1BSLUROLNCc0LDRgdGB0LDQttC90YvQuSDRgNC+0LvQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCwwLDQsMTUyMw0KMjAyNi0wOC0yNSxTUFItRE4s0JzQsNGB0YHQsNC20L3Ri9C5INGA0L7Qu9C40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwxLDI5OTAsNTY1LDAsMjM4LDQsMTUyMw0KMjAyNi0wOC0yNixTUFItRE4s0JzQsNGB0YHQsNC20L3Ri9C5INGA0L7Qu9C40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwyLDU5ODAsMTAxNSwwLDQ1NCwzLDE1MjMNCjIwMjYtMDgtMjcsU1BSLUROLNCc0LDRgdGB0LDQttC90YvQuSDRgNC+0LvQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCwzMzMsMywxNTIzDQoyMDI2LTA4LTI4LFNQUi1ETizQnNCw0YHRgdCw0LbQvdGL0Lkg0YDQvtC70LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDAsMCwwLDAsMCwzLDE1MjMNCjIwMjYtMDgtMjksU1BSLUROLNCc0LDRgdGB0LDQttC90YvQuSDRgNC+0LvQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCw0NDYsMywxNTIzDQoyMDI2LTA4LTE2LFNQUi1CTCzQktCw0LvQuNC6INC80LDRgdGB0LDQttC90YvQuSzQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDMsMTM0NzAsMjMzNCwwLDExMyw1NSwyMzU5DQoyMDI2LTA4LTE3LFNQUi1CTCzQktCw0LvQuNC6INC80LDRgdGB0LDQttC90YvQuSzQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDIsODk4MCwxNjM0LDAsNDk5LDU0LDIzNTkNCjIwMjYtMDgtMTgsU1BSLUJMLNCS0LDQu9C40Log0LzQsNGB0YHQsNC20L3Ri9C5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsNCwxNzk2MCwyOTQ3LDAsODk3LDUyLDIzNTkNCjIwMjYtMDgtMTksU1BSLUJMLNCS0LDQu9C40Log0LzQsNGB0YHQsNC20L3Ri9C5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMywxMzQ3MCwyMjMzLDAsNDgzLDUxLDIzNTkNCjIwMjYtMDgtMjAsU1BSLUJMLNCS0LDQu9C40Log0LzQsNGB0YHQsNC20L3Ri9C5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCwxMzQsNTEsMjM1OQ0KMjAyNi0wOC0yMSxTUFItQkws0JLQsNC70LjQuiDQvNCw0YHRgdCw0LbQvdGL0Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwxLDQ0OTAsNzQwLDAsMzA1LDUxLDIzNTkNCjIwMjYtMDgtMjIsU1BSLUJMLNCS0LDQu9C40Log0LzQsNGB0YHQsNC20L3Ri9C5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiw4OTgwLDE0OTMsMCwwLDUwLDIzNTkNCjIwMjYtMDgtMjMsU1BSLUJMLNCS0LDQu9C40Log0LzQsNGB0YHQsNC20L3Ri9C5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMSw0NDkwLDcyMywwLDAsNTAsMjM1OQ0KMjAyNi0wOC0yNCxTUFItQkws0JLQsNC70LjQuiDQvNCw0YHRgdCw0LbQvdGL0Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSw0LDE3OTYwLDI5NjUsMCwxNzQsNDgsMjM1OQ0KMjAyNi0wOC0yNSxTUFItQkws0JLQsNC70LjQuiDQvNCw0YHRgdCw0LbQvdGL0Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSw1LDIyNDUwLDM4MzQsMCw1MzUsNDYsMjM1OQ0KMjAyNi0wOC0yNixTUFItQkws0JLQsNC70LjQuiDQvNCw0YHRgdCw0LbQvdGL0Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDQwMyw0NiwyMzU5DQoyMDI2LTA4LTI3LFNQUi1CTCzQktCw0LvQuNC6INC80LDRgdGB0LDQttC90YvQuSzQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDEsNDQ5MCw4NTIsMCwzNzUsNDYsMjM1OQ0KMjAyNi0wOC0yOCxTUFItQkws0JLQsNC70LjQuiDQvNCw0YHRgdCw0LbQvdGL0Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDAsNDYsMjM1OQ0KMjAyNi0wOC0yOSxTUFItQkws0JLQsNC70LjQuiDQvNCw0YHRgdCw0LbQvdGL0Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDg4Nyw0NiwyMzU5DQoyMDI2LTA4LTE2LFNQUi1UUlgs0J/QtdGC0LvQuCBUUlgg0LTQu9GPINGC0YDQtdC90LjRgNC+0LLQvtC6LNCf0L7QtNCy0LXRgdC90YvQtSwzLDc0NzAsMTM5NiwwLDAsMzIsMTI3MA0KMjAyNi0wOC0xNyxTUFItVFJYLNCf0LXRgtC70LggVFJYINC00LvRjyDRgtGA0LXQvdC40YDQvtCy0L7QuizQn9C+0LTQstC10YHQvdGL0LUsMCwwLDAsMCwwLDMyLDEyNzANCjIwMjYtMDgtMTgsU1BSLVRSWCzQn9C10YLQu9C4IFRSWCDQtNC70Y8g0YLRgNC10L3QuNGA0L7QstC+0Los0J/QvtC00LLQtdGB0L3Ri9C1LDAsMCwwLDAsMCwzMiwxMjcwDQoyMDI2LTA4LTE5LFNQUi1UUlgs0J/QtdGC0LvQuCBUUlgg0LTQu9GPINGC0YDQtdC90LjRgNC+0LLQvtC6LNCf0L7QtNCy0LXRgdC90YvQtSwyLDQ5ODAsODI3LDAsNDY5LDMxLDEyNzANCjIwMjYtMDgtMjAsU1BSLVRSWCzQn9C10YLQu9C4IFRSWCDQtNC70Y8g0YLRgNC10L3QuNGA0L7QstC+0Los0J/QvtC00LLQtdGB0L3Ri9C1LDAsMCwwLDAsMCwzMSwxMjcwDQoyMDI2LTA4LTIxLFNQUi1UUlgs0J/QtdGC0LvQuCBUUlgg0LTQu9GPINGC0YDQtdC90LjRgNC+0LLQvtC6LNCf0L7QtNCy0LXRgdC90YvQtSw0LDk5NjAsMTgyNywwLDI5NywyOSwxMjcwDQoyMDI2LTA4LTIyLFNQUi1UUlgs0J/QtdGC0LvQuCBUUlgg0LTQu9GPINGC0YDQtdC90LjRgNC+0LLQvtC6LNCf0L7QtNCy0LXRgdC90YvQtSw0LDk5NjAsMTc4NywwLDg0OCwyNywxMjcwDQoyMDI2LTA4LTIzLFNQUi1UUlgs0J/QtdGC0LvQuCBUUlgg0LTQu9GPINGC0YDQtdC90LjRgNC+0LLQvtC6LNCf0L7QtNCy0LXRgdC90YvQtSwyLDQ5ODAsOTMyLDAsMCwyNiwxMjcwDQoyMDI2LTA4LTI0LFNQUi1UUlgs0J/QtdGC0LvQuCBUUlgg0LTQu9GPINGC0YDQtdC90LjRgNC+0LLQvtC6LNCf0L7QtNCy0LXRgdC90YvQtSwwLDAsMCwwLDkwLDI2LDEyNzANCjIwMjYtMDgtMjUsU1BSLVRSWCzQn9C10YLQu9C4IFRSWCDQtNC70Y8g0YLRgNC10L3QuNGA0L7QstC+0Los0J/QvtC00LLQtdGB0L3Ri9C1LDIsNDk4MCw4MTgsMCwwLDI1LDEyNzANCjIwMjYtMDgtMjYsU1BSLVRSWCzQn9C10YLQu9C4IFRSWCDQtNC70Y8g0YLRgNC10L3QuNGA0L7QstC+0Los0J/QvtC00LLQtdGB0L3Ri9C1LDEsMjQ5MCw0MTEsMCwzMjYsMjUsMTI3MA0KMjAyNi0wOC0yNyxTUFItVFJYLNCf0LXRgtC70LggVFJYINC00LvRjyDRgtGA0LXQvdC40YDQvtCy0L7QuizQn9C+0LTQstC10YHQvdGL0LUsMCwwLDAsMCw2NjcsMjUsMTI3MA0KMjAyNi0wOC0yOCxTUFItVFJYLNCf0LXRgtC70LggVFJYINC00LvRjyDRgtGA0LXQvdC40YDQvtCy0L7QuizQn9C+0LTQstC10YHQvdGL0LUsNSwxMjQ1MCwyMjY5LDAsMjY1LDIzLDEyNzANCjIwMjYtMDgtMjksU1BSLVRSWCzQn9C10YLQu9C4IFRSWCDQtNC70Y8g0YLRgNC10L3QuNGA0L7QstC+0Los0J/QvtC00LLQtdGB0L3Ri9C1LDAsMCwwLDAsMCwyMywxMjcwDQoyMDI2LTA4LTE2LFNQUi1NQi0zLNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDMg0LrQsyzQodC40LvQvtCy0YvQtSwyLDQ5ODAsODk5LDAsODc3LDExMiwxMzI5DQoyMDI2LTA4LTE3LFNQUi1NQi0zLNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDMg0LrQsyzQodC40LvQvtCy0YvQtSwzLDc0NzAsMTM5NiwwLDAsMTExLDEzMjkNCjIwMjYtMDgtMTgsU1BSLU1CLTMs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgMyDQutCzLNCh0LjQu9C+0LLRi9C1LDEsMjQ5MCw0MTQsMCwwLDExMSwxMzI5DQoyMDI2LTA4LTE5LFNQUi1NQi0zLNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDMg0LrQsyzQodC40LvQvtCy0YvQtSwyLDQ5ODAsODU1LDAsMzkxLDExMCwxMzI5DQoyMDI2LTA4LTIwLFNQUi1NQi0zLNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDMg0LrQsyzQodC40LvQvtCy0YvQtSw0LDk5NjAsMTc1NCwwLDUxNSwxMDgsMTMyOQ0KMjAyNi0wOC0yMSxTUFItTUItMyzQnNGP0Ycg0LzQtdC00LjRhtC40L3RgdC60LjQuSAzINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwyNzIsMTA4LDEzMjkNCjIwMjYtMDgtMjIsU1BSLU1CLTMs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgMyDQutCzLNCh0LjQu9C+0LLRi9C1LDQsOTk2MCwxNzYyLDAsMCwxMDYsMTMyOQ0KMjAyNi0wOC0yMyxTUFItTUItMyzQnNGP0Ycg0LzQtdC00LjRhtC40L3RgdC60LjQuSAzINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwyMTMsMTA2LDEzMjkNCjIwMjYtMDgtMjQsU1BSLU1CLTMs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgMyDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMTE1LDEwNiwxMzI5DQoyMDI2LTA4LTI1LFNQUi1NQi0zLNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDMg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDcwNSwxMDYsMTMyOQ0KMjAyNi0wOC0yNixTUFItTUItMyzQnNGP0Ycg0LzQtdC00LjRhtC40L3RgdC60LjQuSAzINC60LMs0KHQuNC70L7QstGL0LUsMyw3NDcwLDEzOTIsMCw2NjMsMTA1LDEzMjkNCjIwMjYtMDgtMjcsU1BSLU1CLTMs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgMyDQutCzLNCh0LjQu9C+0LLRi9C1LDYsMTQ5NDAsMjQ4MSwwLDAsMTAyLDEzMjkNCjIwMjYtMDgtMjgsU1BSLU1CLTMs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgMyDQutCzLNCh0LjQu9C+0LLRi9C1LDUsMTI0NTAsMjI3MywwLDQ3MSwxMDAsMTMyOQ0KMjAyNi0wOC0yOSxTUFItTUItMyzQnNGP0Ycg0LzQtdC00LjRhtC40L3RgdC60LjQuSAzINC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwzMjEsMTAwLDEzMjkNCjIwMjYtMDgtMTYsU1BSLU1CLTUs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNTc0LDM3LDExNTQNCjIwMjYtMDgtMTcsU1BSLU1CLTUs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNzI3LDM3LDExNTQNCjIwMjYtMDgtMTgsU1BSLU1CLTUs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCwzNywxMTU0DQoyMDI2LTA4LTE5LFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDU1MSwzNywxMTU0DQoyMDI2LTA4LTIwLFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDEyNCwzNywxMTU0DQoyMDI2LTA4LTIxLFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwxLDI0OTAsNDUwLDAsODczLDM3LDExNTQNCjIwMjYtMDgtMjIsU1BSLU1CLTUs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCwzNywxMTU0DQoyMDI2LTA4LTIzLFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsMzcsMTE1NA0KMjAyNi0wOC0yNCxTUFItTUItNSzQnNGP0Ycg0LzQtdC00LjRhtC40L3RgdC60LjQuSA1INC60LMs0KHQuNC70L7QstGL0LUsMiw0OTgwLDk0NSwwLDE2NiwzNiwxMTU0DQoyMDI2LTA4LTI1LFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwzLDc0NzAsMTQwMywwLDY5MSwzNSwxMTU0DQoyMDI2LTA4LTI2LFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDUyNywzNSwxMTU0DQoyMDI2LTA4LTI3LFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDg1NCwzNSwxMTU0DQoyMDI2LTA4LTI4LFNQUi1NQi01LNCc0Y/RhyDQvNC10LTQuNGG0LjQvdGB0LrQuNC5IDUg0LrQsyzQodC40LvQvtCy0YvQtSwxLDI0OTAsNDAxLDAsNTA4LDM1LDExNTQNCjIwMjYtMDgtMjksU1BSLU1CLTUs0JzRj9GHINC80LXQtNC40YbQuNC90YHQutC40LkgNSDQutCzLNCh0LjQu9C+0LLRi9C1LDEsMjQ5MCw0NDAsMCw0NjAsMzUsMTE1NA0KMjAyNi0wOC0xNixTUFItS0ItOCzQk9C40YDRjyA4INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCw3NTgsNjQsOTY5DQoyMDI2LTA4LTE3LFNQUi1LQi04LNCT0LjRgNGPIDgg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDY3Myw2NCw5NjkNCjIwMjYtMDgtMTgsU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw2NCw5NjkNCjIwMjYtMDgtMTksU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw2NCw5NjkNCjIwMjYtMDgtMjAsU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMzI0LDY0LDk2OQ0KMjAyNi0wOC0yMSxTUFItS0ItOCzQk9C40YDRjyA4INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwzMTAsNjQsOTY5DQoyMDI2LTA4LTIyLFNQUi1LQi04LNCT0LjRgNGPIDgg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDI2Miw2NCw5NjkNCjIwMjYtMDgtMjMsU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw2NCw5NjkNCjIwMjYtMDgtMjQsU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNjU1LDY0LDk2OQ0KMjAyNi0wOC0yNSxTUFItS0ItOCzQk9C40YDRjyA4INC60LMs0KHQuNC70L7QstGL0LUsMiwzOTgwLDczOCwwLDYxNSw2Myw5NjkNCjIwMjYtMDgtMjYsU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDIsMzk4MCw2NTgsMCwwLDYyLDk2OQ0KMjAyNi0wOC0yNyxTUFItS0ItOCzQk9C40YDRjyA4INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCw4MTQsNjIsOTY5DQoyMDI2LTA4LTI4LFNQUi1LQi04LNCT0LjRgNGPIDgg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDQ3Niw2Miw5NjkNCjIwMjYtMDgtMjksU1BSLUtCLTgs0JPQuNGA0Y8gOCDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsNjIyLDYyLDk2OQ0KMjAyNi0wOC0xNixTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDIxMiw2LDYzNg0KMjAyNi0wOC0xNyxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwyLDIzODAsNDE4LDAsMCw1LDYzNg0KMjAyNi0wOC0xOCxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDc2MCw1LDYzNg0KMjAyNi0wOC0xOSxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDI1Miw1LDYzNg0KMjAyNi0wOC0yMCxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDM3MSw1LDYzNg0KMjAyNi0wOC0yMSxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDkxLDUsNjM2DQoyMDI2LTA4LTIyLFNQUi1LQi0xNizQk9C40YDRjyAxNiDQutCzLNCh0LjQu9C+0LLRi9C1LDAsMCwwLDAsMCw1LDYzNg0KMjAyNi0wOC0yMyxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDUxMiw1LDYzNg0KMjAyNi0wOC0yNCxTUFItS0ItMTYs0JPQuNGA0Y8gMTYg0LrQsyzQodC40LvQvtCy0YvQtSwxLDExOTAsMTk1LDAsNzQ0LDUsNjM2DQoyMDI2LTA4LTI1LFNQUi1LQi0xNizQk9C40YDRjyAxNiDQutCzLNCh0LjQu9C+0LLRi9C1LDMsMzU3MCw2MzEsMCwwLDQsNjM2DQoyMDI2LTA4LTI2LFNQUi1LQi0xNizQk9C40YDRjyAxNiDQutCzLNCh0LjQu9C+0LLRi9C1LDIsMjM4MCw0MzksMCwzMjEsMyw2MzYNCjIwMjYtMDgtMjcsU1BSLUtCLTE2LNCT0LjRgNGPIDE2INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwzNzEsMyw2MzYNCjIwMjYtMDgtMjgsU1BSLUtCLTE2LNCT0LjRgNGPIDE2INC60LMs0KHQuNC70L7QstGL0LUsMSwxMTkwLDIwNiwwLDAsMyw2MzYNCjIwMjYtMDgtMjksU1BSLUtCLTE2LNCT0LjRgNGPIDE2INC60LMs0KHQuNC70L7QstGL0LUsMCwwLDAsMCwwLDMsNjM2DQoyMDI2LTA4LTE2LFNQUi1KUizQlNC20LDQvNC/0LXRgCDRgNC10LfQuNC90L7QstGL0Lks0KTQuNGC0L3QtdGBLDAsMCwwLDAsNzgxLDY3LDc0Mg0KMjAyNi0wOC0xNyxTUFItSlIs0JTQttCw0LzQv9C10YAg0YDQtdC30LjQvdC+0LLRi9C5LNCk0LjRgtC90LXRgSwwLDAsMCwwLDcyMyw2Nyw3NDINCjIwMjYtMDgtMTgsU1BSLUpSLNCU0LbQsNC80L/QtdGAINGA0LXQt9C40L3QvtCy0YvQuSzQpNC40YLQvdC10YEsMyw0NDcwLDcxNywxLDYxOCw2Niw3NDINCjIwMjYtMDgtMTksU1BSLUpSLNCU0LbQsNC80L/QtdGAINGA0LXQt9C40L3QvtCy0YvQuSzQpNC40YLQvdC10YEsMyw0NDcwLDczNCwwLDAsNjUsNzQyDQoyMDI2LTA4LTIwLFNQUi1KUizQlNC20LDQvNC/0LXRgCDRgNC10LfQuNC90L7QstGL0Lks0KTQuNGC0L3QtdGBLDAsMCwwLDAsMjE4LDY1LDc0Mg0KMjAyNi0wOC0yMSxTUFItSlIs0JTQttCw0LzQv9C10YAg0YDQtdC30LjQvdC+0LLRi9C5LNCk0LjRgtC90LXRgSwwLDAsMCwwLDYyOCw2NSw3NDINCjIwMjYtMDgtMjIsU1BSLUpSLNCU0LbQsNC80L/QtdGAINGA0LXQt9C40L3QvtCy0YvQuSzQpNC40YLQvdC10YEsMyw0NDcwLDgwOCwwLDY4OCw2NCw3NDINCjIwMjYtMDgtMjMsU1BSLUpSLNCU0LbQsNC80L/QtdGAINGA0LXQt9C40L3QvtCy0YvQuSzQpNC40YLQvdC10YEsMCwwLDAsMCwyOTcsNjQsNzQyDQoyMDI2LTA4LTI0LFNQUi1KUizQlNC20LDQvNC/0LXRgCDRgNC10LfQuNC90L7QstGL0Lks0KTQuNGC0L3QtdGBLDIsMjk4MCw1MTksMSwwLDYzLDc0Mg0KMjAyNi0wOC0yNSxTUFItSlIs0JTQttCw0LzQv9C10YAg0YDQtdC30LjQvdC+0LLRi9C5LNCk0LjRgtC90LXRgSwxLDE0OTAsMjYzLDAsODUsNjMsNzQyDQoyMDI2LTA4LTI2LFNQUi1KUizQlNC20LDQvNC/0LXRgCDRgNC10LfQuNC90L7QstGL0Lks0KTQuNGC0L3QtdGBLDIsMjk4MCw1NTIsMCw0MjMsNjIsNzQyDQoyMDI2LTA4LTI3LFNQUi1KUizQlNC20LDQvNC/0LXRgCDRgNC10LfQuNC90L7QstGL0Lks0KTQuNGC0L3QtdGBLDAsMCwwLDAsNjAyLDYyLDc0Mg0KMjAyNi0wOC0yOCxTUFItSlIs0JTQttCw0LzQv9C10YAg0YDQtdC30LjQvdC+0LLRi9C5LNCk0LjRgtC90LXRgSwzLDQ0NzAsNzYwLDAsNDk5LDYxLDc0Mg0KMjAyNi0wOC0yOSxTUFItSlIs0JTQttCw0LzQv9C10YAg0YDQtdC30LjQvdC+0LLRi9C5LNCk0LjRgtC90LXRgSwxLDE0OTAsMjQwLDAsNTkzLDYxLDc0Mg0KMjAyNi0wOC0xNixTUFItU0Is0KHRgtC10L8t0L/Qu9Cw0YLRhNC+0YDQvNCwLNCa0LDRgNC00LjQviwwLDAsMCwwLDQyNiw0OCwxMDMxDQoyMDI2LTA4LTE3LFNQUi1TQizQodGC0LXQvy3Qv9C70LDRgtGE0L7RgNC80LAs0JrQsNGA0LTQuNC+LDIsNDk4MCw4NDEsMCw0MTEsNDcsMTAzMQ0KMjAyNi0wOC0xOCxTUFItU0Is0KHRgtC10L8t0L/Qu9Cw0YLRhNC+0YDQvNCwLNCa0LDRgNC00LjQviwwLDAsMCwwLDcyOSw0NywxMDMxDQoyMDI2LTA4LTE5LFNQUi1TQizQodGC0LXQvy3Qv9C70LDRgtGE0L7RgNC80LAs0JrQsNGA0LTQuNC+LDIsNDk4MCw4NDIsMCw2MDEsNDYsMTAzMQ0KMjAyNi0wOC0yMCxTUFItU0Is0KHRgtC10L8t0L/Qu9Cw0YLRhNC+0YDQvNCwLNCa0LDRgNC00LjQviwyLDQ5ODAsODc4LDAsMCw0NSwxMDMxDQoyMDI2LTA4LTIxLFNQUi1TQizQodGC0LXQvy3Qv9C70LDRgtGE0L7RgNC80LAs0JrQsNGA0LTQuNC+LDIsNDk4MCw4MjUsMSw1NzksNDQsMTAzMQ0KMjAyNi0wOC0yMixTUFItU0Is0KHRgtC10L8t0L/Qu9Cw0YLRhNC+0YDQvNCwLNCa0LDRgNC00LjQviwwLDAsMCwwLDU5NCw0NCwxMDMxDQoyMDI2LTA4LTIzLFNQUi1TQizQodGC0LXQvy3Qv9C70LDRgtGE0L7RgNC80LAs0JrQsNGA0LTQuNC+LDAsMCwwLDAsMjU0LDQ0LDEwMzENCjIwMjYtMDgtMjQsU1BSLVNCLNCh0YLQtdC/LdC/0LvQsNGC0YTQvtGA0LzQsCzQmtCw0YDQtNC40L4sMSwyNDkwLDQxMiwwLDAsNDQsMTAzMQ0KMjAyNi0wOC0yNSxTUFItU0Is0KHRgtC10L8t0L/Qu9Cw0YLRhNC+0YDQvNCwLNCa0LDRgNC00LjQviwwLDAsMCwwLDM4Miw0NCwxMDMxDQoyMDI2LTA4LTI2LFNQUi1TQizQodGC0LXQvy3Qv9C70LDRgtGE0L7RgNC80LAs0JrQsNGA0LTQuNC+LDMsNzQ3MCwxMjYzLDAsMzQxLDQzLDEwMzENCjIwMjYtMDgtMjcsU1BSLVNCLNCh0YLQtdC/LdC/0LvQsNGC0YTQvtGA0LzQsCzQmtCw0YDQtNC40L4sMCwwLDAsMCwxMjUsNDMsMTAzMQ0KMjAyNi0wOC0yOCxTUFItU0Is0KHRgtC10L8t0L/Qu9Cw0YLRhNC+0YDQvNCwLNCa0LDRgNC00LjQviwwLDAsMCwwLDgzMyw0MywxMDMxDQoyMDI2LTA4LTI5LFNQUi1TQizQodGC0LXQvy3Qv9C70LDRgtGE0L7RgNC80LAs0JrQsNGA0LTQuNC+LDIsNDk4MCw4NTUsMSw4NDksNDIsMTAzMQ0KMjAyNi0wOC0xNixTUFItQ1As0KbQtdC/0Ywg0YLRj9C20LXQu9C+0LDRgtC70LXRgtC40YfQtdGB0LrQsNGPLNCh0LjQu9C+0LLRi9C1LDIsMjM4MCw0MTEsMCwwLDE3LDU2MQ0KMjAyNi0wOC0xNyxTUFItQ1As0KbQtdC/0Ywg0YLRj9C20LXQu9C+0LDRgtC70LXRgtC40YfQtdGB0LrQsNGPLNCh0LjQu9C+0LLRi9C1LDIsMjM4MCw0NDIsMCwwLDE2LDU2MQ0KMjAyNi0wOC0xOCxTUFItQ1As0KbQtdC/0Ywg0YLRj9C20LXQu9C+0LDRgtC70LXRgtC40YfQtdGB0LrQsNGPLNCh0LjQu9C+0LLRi9C1LDIsMjM4MCw0MTMsMCw4MzcsMTUsNTYxDQoyMDI2LTA4LTE5LFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMiwyMzgwLDQzMCwwLDAsMTQsNTYxDQoyMDI2LTA4LTIwLFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMSwxMTkwLDIxNCwwLDgyOSwxNCw1NjENCjIwMjYtMDgtMjEsU1BSLUNQLNCm0LXQv9GMINGC0Y/QttC10LvQvtCw0YLQu9C10YLQuNGH0LXRgdC60LDRjyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsMTQsNTYxDQoyMDI2LTA4LTIyLFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMiwyMzgwLDQwMywwLDg2NSwxMyw1NjENCjIwMjYtMDgtMjMsU1BSLUNQLNCm0LXQv9GMINGC0Y/QttC10LvQvtCw0YLQu9C10YLQuNGH0LXRgdC60LDRjyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDg1OCwxMyw1NjENCjIwMjYtMDgtMjQsU1BSLUNQLNCm0LXQv9GMINGC0Y/QttC10LvQvtCw0YLQu9C10YLQuNGH0LXRgdC60LDRjyzQodC40LvQvtCy0YvQtSwwLDAsMCwwLDAsMTMsNTYxDQoyMDI2LTA4LTI1LFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCw0NzEsMTMsNTYxDQoyMDI2LTA4LTI2LFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMSwxMTkwLDIwMiwwLDAsMTMsNTYxDQoyMDI2LTA4LTI3LFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCw1NzIsMTMsNTYxDQoyMDI2LTA4LTI4LFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCw1NTksMTMsNTYxDQoyMDI2LTA4LTI5LFNQUi1DUCzQptC10L/RjCDRgtGP0LbQtdC70L7QsNGC0LvQtdGC0LjRh9C10YHQutCw0Y8s0KHQuNC70L7QstGL0LUsMCwwLDAsMCwzODgsMTMsNTYxDQoyMDI2LTA4LTE2LFNQUi1TUEQs0J/QsNGA0LDRiNGO0YIg0YHQv9GA0LjQvdGC0LXRgNGB0LrQuNC5LNCa0LDRgNC00LjQviwwLDAsMCwwLDcyMiw1LDc3Ng0KMjAyNi0wOC0xNyxTUFItU1BELNCf0LDRgNCw0YjRjtGCINGB0L/RgNC40L3RgtC10YDRgdC60LjQuSzQmtCw0YDQtNC40L4sMiwyOTgwLDU1NiwwLDIwMSw0LDc3Ng0KMjAyNi0wOC0xOCxTUFItU1BELNCf0LDRgNCw0YjRjtGCINGB0L/RgNC40L3RgtC10YDRgdC60LjQuSzQmtCw0YDQtNC40L4sMyw0NDcwLDc4MiwwLDUyMywzLDc3Ng0KMjAyNi0wOC0xOSxTUFItU1BELNCf0LDRgNCw0YjRjtGCINGB0L/RgNC40L3RgtC10YDRgdC60LjQuSzQmtCw0YDQtNC40L4sMCwwLDAsMCw2NzIsMyw3NzYNCjIwMjYtMDgtMjAsU1BSLVNQRCzQn9Cw0YDQsNGI0Y7RgiDRgdC/0YDQuNC90YLQtdGA0YHQutC40Lks0JrQsNGA0LTQuNC+LDAsMCwwLDAsODM5LDMsNzc2DQoyMDI2LTA4LTIxLFNQUi1TUEQs0J/QsNGA0LDRiNGO0YIg0YHQv9GA0LjQvdGC0LXRgNGB0LrQuNC5LNCa0LDRgNC00LjQviwwLDAsMCwwLDUyMywzLDc3Ng0KMjAyNi0wOC0yMixTUFItU1BELNCf0LDRgNCw0YjRjtGCINGB0L/RgNC40L3RgtC10YDRgdC60LjQuSzQmtCw0YDQtNC40L4sMCwwLDAsMCwyOTMsMyw3NzYNCjIwMjYtMDgtMjMsU1BSLVNQRCzQn9Cw0YDQsNGI0Y7RgiDRgdC/0YDQuNC90YLQtdGA0YHQutC40Lks0JrQsNGA0LTQuNC+LDAsMCwwLDAsMjQ2LDMsNzc2DQoyMDI2LTA4LTI0LFNQUi1TUEQs0J/QsNGA0LDRiNGO0YIg0YHQv9GA0LjQvdGC0LXRgNGB0LrQuNC5LNCa0LDRgNC00LjQviwxLDE0OTAsMjY0LDAsNzE5LDMsNzc2DQoyMDI2LTA4LTI1LFNQUi1TUEQs0J/QsNGA0LDRiNGO0YIg0YHQv9GA0LjQvdGC0LXRgNGB0LrQuNC5LNCa0LDRgNC00LjQviwxLDE0OTAsMjgwLDAsNzkwLDMsNzc2DQoyMDI2LTA4LTI2LFNQUi1TUEQs0J/QsNGA0LDRiNGO0YIg0YHQv9GA0LjQvdGC0LXRgNGB0LrQuNC5LNCa0LDRgNC00LjQviwwLDAsMCwwLDAsMyw3NzYNCjIwMjYtMDgtMjcsU1BSLVNQRCzQn9Cw0YDQsNGI0Y7RgiDRgdC/0YDQuNC90YLQtdGA0YHQutC40Lks0JrQsNGA0LTQuNC+LDIsMjk4MCw0ODUsMCwwLDIsNzc2DQoyMDI2LTA4LTI4LFNQUi1TUEQs0J/QsNGA0LDRiNGO0YIg0YHQv9GA0LjQvdGC0LXRgNGB0LrQuNC5LNCa0LDRgNC00LjQviwyLDI5ODAsNTYwLDAsMCwxLDc3Ng0KMjAyNi0wOC0yOSxTUFItU1BELNCf0LDRgNCw0YjRjtGCINGB0L/RgNC40L3RgtC10YDRgdC60LjQuSzQmtCw0YDQtNC40L4sMCwwLDAsMCw1NzksMSw3NzYNCjIwMjYtMDgtMTYsU1BSLUJMMizQn9C+0Y/RgSDQtNC70Y8g0L/RgNC40YHQtdC00LDQvdC40Lks0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCw2NTksMzAsNTIxDQoyMDI2LTA4LTE3LFNQUi1CTDIs0J/QvtGP0YEg0LTQu9GPINC/0YDQuNGB0LXQtNCw0L3QuNC5LNCh0L3QsNGA0Y/QttC10L3QuNC1LDAsMCwwLDAsNzg4LDMwLDUyMQ0KMjAyNi0wOC0xOCxTUFItQkwyLNCf0L7Rj9GBINC00LvRjyDQv9GA0LjRgdC10LTQsNC90LjQuSzQodC90LDRgNGP0LbQtdC90LjQtSwwLDAsMCwwLDI3MSwzMCw1MjENCjIwMjYtMDgtMTksU1BSLUJMMizQn9C+0Y/RgSDQtNC70Y8g0L/RgNC40YHQtdC00LDQvdC40Lks0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCwyMzAsMzAsNTIxDQoyMDI2LTA4LTIwLFNQUi1CTDIs0J/QvtGP0YEg0LTQu9GPINC/0YDQuNGB0LXQtNCw0L3QuNC5LNCh0L3QsNGA0Y/QttC10L3QuNC1LDAsMCwwLDAsMCwzMCw1MjENCjIwMjYtMDgtMjEsU1BSLUJMMizQn9C+0Y/RgSDQtNC70Y8g0L/RgNC40YHQtdC00LDQvdC40Lks0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCwwLDMwLDUyMQ0KMjAyNi0wOC0yMixTUFItQkwyLNCf0L7Rj9GBINC00LvRjyDQv9GA0LjRgdC10LTQsNC90LjQuSzQodC90LDRgNGP0LbQtdC90LjQtSwwLDAsMCwwLDY4NiwzMCw1MjENCjIwMjYtMDgtMjMsU1BSLUJMMizQn9C+0Y/RgSDQtNC70Y8g0L/RgNC40YHQtdC00LDQvdC40Lks0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCwwLDMwLDUyMQ0KMjAyNi0wOC0yNCxTUFItQkwyLNCf0L7Rj9GBINC00LvRjyDQv9GA0LjRgdC10LTQsNC90LjQuSzQodC90LDRgNGP0LbQtdC90LjQtSwwLDAsMCwwLDQ0MiwzMCw1MjENCjIwMjYtMDgtMjUsU1BSLUJMMizQn9C+0Y/RgSDQtNC70Y8g0L/RgNC40YHQtdC00LDQvdC40Lks0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCw0MDAsMzAsNTIxDQoyMDI2LTA4LTI2LFNQUi1CTDIs0J/QvtGP0YEg0LTQu9GPINC/0YDQuNGB0LXQtNCw0L3QuNC5LNCh0L3QsNGA0Y/QttC10L3QuNC1LDAsMCwwLDAsODEyLDMwLDUyMQ0KMjAyNi0wOC0yNyxTUFItQkwyLNCf0L7Rj9GBINC00LvRjyDQv9GA0LjRgdC10LTQsNC90LjQuSzQodC90LDRgNGP0LbQtdC90LjQtSwxLDExOTAsMjE5LDAsMCwzMCw1MjENCjIwMjYtMDgtMjgsU1BSLUJMMizQn9C+0Y/RgSDQtNC70Y8g0L/RgNC40YHQtdC00LDQvdC40Lks0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCw3MTgsMzAsNTIxDQoyMDI2LTA4LTI5LFNQUi1CTDIs0J/QvtGP0YEg0LTQu9GPINC/0YDQuNGB0LXQtNCw0L3QuNC5LNCh0L3QsNGA0Y/QttC10L3QuNC1LDAsMCwwLDAsOTgsMzAsNTIxDQoyMDI2LTA4LTE2LFNQUi1TVFJQLNCh0YLRgNC+0L/RiyDQtNC70Y8g0YLRj9Cz0Lgs0KHQvdCw0YDRj9C20LXQvdC40LUsMSw5OTAsMTgwLDAsMCwxMTAsNDYzDQoyMDI2LTA4LTE3LFNQUi1TVFJQLNCh0YLRgNC+0L/RiyDQtNC70Y8g0YLRj9Cz0Lgs0KHQvdCw0YDRj9C20LXQvdC40LUsMSw5OTAsMTcxLDAsMCwxMTAsNDYzDQoyMDI2LTA4LTE4LFNQUi1TVFJQLNCh0YLRgNC+0L/RiyDQtNC70Y8g0YLRj9Cz0Lgs0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCwwLDExMCw0NjMNCjIwMjYtMDgtMTksU1BSLVNUUlAs0KHRgtGA0L7Qv9GLINC00LvRjyDRgtGP0LPQuCzQodC90LDRgNGP0LbQtdC90LjQtSwxLDk5MCwxNjIsMCw0NzYsMTEwLDQ2Mw0KMjAyNi0wOC0yMCxTUFItU1RSUCzQodGC0YDQvtC/0Ysg0LTQu9GPINGC0Y/Qs9C4LNCh0L3QsNGA0Y/QttC10L3QuNC1LDIsMTk4MCwzNzIsMCw3NjUsMTA5LDQ2Mw0KMjAyNi0wOC0yMSxTUFItU1RSUCzQodGC0YDQvtC/0Ysg0LTQu9GPINGC0Y/Qs9C4LNCh0L3QsNGA0Y/QttC10L3QuNC1LDAsMCwwLDAsNDM0LDEwOSw0NjMNCjIwMjYtMDgtMjIsU1BSLVNUUlAs0KHRgtGA0L7Qv9GLINC00LvRjyDRgtGP0LPQuCzQodC90LDRgNGP0LbQtdC90LjQtSwwLDAsMCwwLDIxMywxMDksNDYzDQoyMDI2LTA4LTIzLFNQUi1TVFJQLNCh0YLRgNC+0L/RiyDQtNC70Y8g0YLRj9Cz0Lgs0KHQvdCw0YDRj9C20LXQvdC40LUsMiwxOTgwLDMyNSwwLDQ0MywxMDgsNDYzDQoyMDI2LTA4LTI0LFNQUi1TVFJQLNCh0YLRgNC+0L/RiyDQtNC70Y8g0YLRj9Cz0Lgs0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCwzMTUsMTA4LDQ2Mw0KMjAyNi0wOC0yNSxTUFItU1RSUCzQodGC0YDQvtC/0Ysg0LTQu9GPINGC0Y/Qs9C4LNCh0L3QsNGA0Y/QttC10L3QuNC1LDIsMTk4MCwzNDEsMSwwLDEwNyw0NjMNCjIwMjYtMDgtMjYsU1BSLVNUUlAs0KHRgtGA0L7Qv9GLINC00LvRjyDRgtGP0LPQuCzQodC90LDRgNGP0LbQtdC90LjQtSwyLDE5ODAsMzI3LDAsNzYwLDEwNiw0NjMNCjIwMjYtMDgtMjcsU1BSLVNUUlAs0KHRgtGA0L7Qv9GLINC00LvRjyDRgtGP0LPQuCzQodC90LDRgNGP0LbQtdC90LjQtSwzLDI5NzAsNTQzLDAsMCwxMDUsNDYzDQoyMDI2LTA4LTI4LFNQUi1TVFJQLNCh0YLRgNC+0L/RiyDQtNC70Y8g0YLRj9Cz0Lgs0KHQvdCw0YDRj9C20LXQvdC40LUsMiwxOTgwLDMzNSwwLDAsMTA0LDQ2Mw0KMjAyNi0wOC0yOSxTUFItU1RSUCzQodGC0YDQvtC/0Ysg0LTQu9GPINGC0Y/Qs9C4LNCh0L3QsNGA0Y/QttC10L3QuNC1LDIsMTk4MCwzNjcsMCw1MDUsMTAzLDQ2Mw0KMjAyNi0wOC0xNixTUFItR1Ms0J/QtdGA0YfQsNGC0LrQuCDRgtGA0LXQvdC40YDQvtCy0L7Rh9C90YvQtSzQodC90LDRgNGP0LbQtdC90LjQtSwzLDc0NzAsMTIyNSwwLDI4NCwxMTQsMTEyMQ0KMjAyNi0wOC0xNyxTUFItR1Ms0J/QtdGA0YfQsNGC0LrQuCDRgtGA0LXQvdC40YDQvtCy0L7Rh9C90YvQtSzQodC90LDRgNGP0LbQtdC90LjQtSwyLDQ5ODAsODAyLDAsNTUxLDExMywxMTIxDQoyMDI2LTA4LTE4LFNQUi1HUyzQn9C10YDRh9Cw0YLQutC4INGC0YDQtdC90LjRgNC+0LLQvtGH0L3Ri9C1LNCh0L3QsNGA0Y/QttC10L3QuNC1LDMsNzQ3MCwxMjExLDAsMjgxLDExMiwxMTIxDQoyMDI2LTA4LTE5LFNQUi1HUyzQn9C10YDRh9Cw0YLQutC4INGC0YDQtdC90LjRgNC+0LLQvtGH0L3Ri9C1LNCh0L3QsNGA0Y/QttC10L3QuNC1LDEsMjQ5MCw0NTcsMCw1NTMsMTEyLDExMjENCjIwMjYtMDgtMjAsU1BSLUdTLNCf0LXRgNGH0LDRgtC60Lgg0YLRgNC10L3QuNGA0L7QstC+0YfQvdGL0LUs0KHQvdCw0YDRj9C20LXQvdC40LUsMCwwLDAsMCwxMDEsMTEyLDExMjENCjIwMjYtMDgtMjEsU1BSLUdTLNCf0LXRgNGH0LDRgtC60Lgg0YLRgNC10L3QuNGA0L7QstC+0YfQvdGL0LUs0KHQvdCw0YDRj9C20LXQvdC40LUsMSwyNDkwLDQxNywwLDAsMTEyLDExMjENCjIwMjYtMDgtMjIsU1BSLUdTLNCf0LXRgNGH0LDRgtC60Lgg0YLRgNC10L3QuNGA0L7QstC+0YfQvdGL0LUs0KHQvdCw0YDRj9C20LXQvdC40LUsMSwyNDkwLDQ3MCwwLDAsMTEyLDExMjENCjIwMjYtMDgtMjMsU1BSLUdTLNCf0LXRgNGH0LDRgtC60Lgg0YLRgNC10L3QuNGA0L7QstC+0YfQvdGL0LUs0KHQvdCw0YDRj9C20LXQvdC40LUsMSwyNDkwLDQxOCwwLDYwMiwxMTIsMTEyMQ0KMjAyNi0wOC0yNCxTUFItR1Ms0J/QtdGA0YfQsNGC0LrQuCDRgtGA0LXQvdC40YDQvtCy0L7Rh9C90YvQtSzQodC90LDRgNGP0LbQtdC90LjQtSwxLDI0OTAsNDA1LDAsMCwxMTIsMTEyMQ0KMjAyNi0wOC0yNSxTUFItR1Ms0J/QtdGA0YfQsNGC0LrQuCDRgtGA0LXQvdC40YDQvtCy0L7Rh9C90YvQtSzQodC90LDRgNGP0LbQtdC90LjQtSwyLDQ5ODAsODg0LDAsMTcwLDExMSwxMTIxDQoyMDI2LTA4LTI2LFNQUi1HUyzQn9C10YDRh9Cw0YLQutC4INGC0YDQtdC90LjRgNC+0LLQvtGH0L3Ri9C1LNCh0L3QsNGA0Y/QttC10L3QuNC1LDQsOTk2MCwxNjYxLDAsNDU5LDEwOSwxMTIxDQoyMDI2LTA4LTI3LFNQUi1HUyzQn9C10YDRh9Cw0YLQutC4INGC0YDQtdC90LjRgNC+0LLQvtGH0L3Ri9C1LNCh0L3QsNGA0Y/QttC10L3QuNC1LDQsOTk2MCwxNTk5LDAsNjQ5LDEwNywxMTIxDQoyMDI2LTA4LTI4LFNQUi1HUyzQn9C10YDRh9Cw0YLQutC4INGC0YDQtdC90LjRgNC+0LLQvtGH0L3Ri9C1LNCh0L3QsNGA0Y/QttC10L3QuNC1LDAsMCwwLDAsMCwxMDcsMTEyMQ0KMjAyNi0wOC0yOSxTUFItR1Ms0J/QtdGA0YfQsNGC0LrQuCDRgtGA0LXQvdC40YDQvtCy0L7Rh9C90YvQtSzQodC90LDRgNGP0LbQtdC90LjQtSwxLDI0OTAsNDYxLDAsNzcxLDEwNywxMTIxDQoyMDI2LTA4LTE2LFNQUi1CUyzQkdC40L3RgiDRjdC70LDRgdGC0LjRh9C90YvQuSDQvNC10LTQuNGG0LjQvdGB0LrQuNC5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiw0OTgwLDkyNywwLDg5LDEwLDEzMDANCjIwMjYtMDgtMTcsU1BSLUJTLNCR0LjQvdGCINGN0LvQsNGB0YLQuNGH0L3Ri9C5INC80LXQtNC40YbQuNC90YHQutC40Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDI0NSwxMCwxMzAwDQoyMDI2LTA4LTE4LFNQUi1CUyzQkdC40L3RgiDRjdC70LDRgdGC0LjRh9C90YvQuSDQvNC10LTQuNGG0LjQvdGB0LrQuNC5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiw0OTgwLDk0NiwwLDExOCw5LDEzMDANCjIwMjYtMDgtMTksU1BSLUJTLNCR0LjQvdGCINGN0LvQsNGB0YLQuNGH0L3Ri9C5INC80LXQtNC40YbQuNC90YHQutC40Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwxLDI0OTAsNDAxLDAsNTg5LDksMTMwMA0KMjAyNi0wOC0yMCxTUFItQlMs0JHQuNC90YIg0Y3Qu9Cw0YHRgtC40YfQvdGL0Lkg0LzQtdC00LjRhtC40L3RgdC60LjQuSzQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDQsOTk2MCwxNjA0LDAsMCw3LDEzMDANCjIwMjYtMDgtMjEsU1BSLUJTLNCR0LjQvdGCINGN0LvQsNGB0YLQuNGH0L3Ri9C5INC80LXQtNC40YbQuNC90YHQutC40Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDAsNywxMzAwDQoyMDI2LTA4LTIyLFNQUi1CUyzQkdC40L3RgiDRjdC70LDRgdGC0LjRh9C90YvQuSDQvNC10LTQuNGG0LjQvdGB0LrQuNC5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMyw3NDcwLDEyMDksMCw4MzUsNiwxMzAwDQoyMDI2LTA4LTIzLFNQUi1CUyzQkdC40L3RgiDRjdC70LDRgdGC0LjRh9C90YvQuSDQvNC10LTQuNGG0LjQvdGB0LrQuNC5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiw0OTgwLDg4NSwwLDQ0MSw1LDEzMDANCjIwMjYtMDgtMjQsU1BSLUJTLNCR0LjQvdGCINGN0LvQsNGB0YLQuNGH0L3Ri9C5INC80LXQtNC40YbQuNC90YHQutC40Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDAsNSwxMzAwDQoyMDI2LTA4LTI1LFNQUi1CUyzQkdC40L3RgiDRjdC70LDRgdGC0LjRh9C90YvQuSDQvNC10LTQuNGG0LjQvdGB0LrQuNC5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiw0OTgwLDg0MCwwLDY1MCw0LDEzMDANCjIwMjYtMDgtMjYsU1BSLUJTLNCR0LjQvdGCINGN0LvQsNGB0YLQuNGH0L3Ri9C5INC80LXQtNC40YbQuNC90YHQutC40Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwyLDQ5ODAsOTMwLDAsNDcyLDMsMTMwMA0KMjAyNi0wOC0yNyxTUFItQlMs0JHQuNC90YIg0Y3Qu9Cw0YHRgtC40YfQvdGL0Lkg0LzQtdC00LjRhtC40L3RgdC60LjQuSzQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDQsOTk2MCwxNjkzLDEsMCwxLDEzMDANCjIwMjYtMDgtMjgsU1BSLUJTLNCR0LjQvdGCINGN0LvQsNGB0YLQuNGH0L3Ri9C5INC80LXQtNC40YbQuNC90YHQutC40Lks0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwwLDAsMCwwLDAsMSwxMzAwDQoyMDI2LTA4LTI5LFNQUi1CUyzQkdC40L3RgiDRjdC70LDRgdGC0LjRh9C90YvQuSDQvNC10LTQuNGG0LjQvdGB0LrQuNC5LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMSwyNDkwLDQyMywwLDAsMSwxMzAwDQoyMDI2LTA4LTE2LFNQUi1NRyzQnNCw0YHRgdCw0LbQvdGL0Lkg0LzRj9GHLdGR0LbQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMCwwLDAsMCw3NjQsMjUsNjYyDQoyMDI2LTA4LTE3LFNQUi1NRyzQnNCw0YHRgdCw0LbQvdGL0Lkg0LzRj9GHLdGR0LbQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMSwxNDkwLDI2MiwwLDYzNiwyNSw2NjINCjIwMjYtMDgtMTgsU1BSLU1HLNCc0LDRgdGB0LDQttC90YvQuSDQvNGP0Yct0ZHQttC40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwzLDQ0NzAsNzQyLDAsMzA3LDI0LDY2Mg0KMjAyNi0wOC0xOSxTUFItTUcs0JzQsNGB0YHQsNC20L3Ri9C5INC80Y/Rhy3RkdC20LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDEsMTQ5MCwyNzcsMCw4OTYsMjQsNjYyDQoyMDI2LTA4LTIwLFNQUi1NRyzQnNCw0YHRgdCw0LbQvdGL0Lkg0LzRj9GHLdGR0LbQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiwyOTgwLDUxNCwwLDAsMjMsNjYyDQoyMDI2LTA4LTIxLFNQUi1NRyzQnNCw0YHRgdCw0LbQvdGL0Lkg0LzRj9GHLdGR0LbQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsNCw1OTYwLDk3NSwwLDg5NCwyMSw2NjINCjIwMjYtMDgtMjIsU1BSLU1HLNCc0LDRgdGB0LDQttC90YvQuSDQvNGP0Yct0ZHQttC40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwzLDQ0NzAsNzMwLDAsNjQ4LDIwLDY2Mg0KMjAyNi0wOC0yMyxTUFItTUcs0JzQsNGB0YHQsNC20L3Ri9C5INC80Y/Rhy3RkdC20LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDQsNTk2MCwxMDE3LDAsNTY4LDE4LDY2Mg0KMjAyNi0wOC0yNCxTUFItTUcs0JzQsNGB0YHQsNC20L3Ri9C5INC80Y/Rhy3RkdC20LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDIsMjk4MCw1MTEsMCw1MjAsMTcsNjYyDQoyMDI2LTA4LTI1LFNQUi1NRyzQnNCw0YHRgdCw0LbQvdGL0Lkg0LzRj9GHLdGR0LbQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiwyOTgwLDUxMSwwLDAsMTYsNjYyDQoyMDI2LTA4LTI2LFNQUi1NRyzQnNCw0YHRgdCw0LbQvdGL0Lkg0LzRj9GHLdGR0LbQuNC6LNCS0L7RgdGB0YLQsNC90L7QstC70LXQvdC40LUsMiwyOTgwLDQ5OCwwLDg3NywxNSw2NjINCjIwMjYtMDgtMjcsU1BSLU1HLNCc0LDRgdGB0LDQttC90YvQuSDQvNGP0Yct0ZHQttC40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwxLDE0OTAsMjQwLDAsMCwxNSw2NjINCjIwMjYtMDgtMjgsU1BSLU1HLNCc0LDRgdGB0LDQttC90YvQuSDQvNGP0Yct0ZHQttC40Los0JLQvtGB0YHRgtCw0L3QvtCy0LvQtdC90LjQtSwzLDQ0NzAsNzk4LDAsNzU3LDE0LDY2Mg0KMjAyNi0wOC0yOSxTUFItTUcs0JzQsNGB0YHQsNC20L3Ri9C5INC80Y/Rhy3RkdC20LjQuizQktC+0YHRgdGC0LDQvdC+0LLQu9C10L3QuNC1LDEsMTQ5MCwyNTksMCwwLDE0LDY2Mg0KMjAyNi0wOC0xNixTUFItQUIs0JDQsdC+0L3QtdC80LXQvdGCLdC/0LvQsNC9INGC0YDQtdC90LjRgNC+0LLQvtC6ICjQutCw0YDRgtC+0YfQutCwKSzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDU1MSwxMywxMTY1DQoyMDI2LTA4LTE3LFNQUi1BQizQkNCx0L7QvdC10LzQtdC90YIt0L/Qu9Cw0L0g0YLRgNC10L3QuNGA0L7QstC+0LogKNC60LDRgNGC0L7Rh9C60LApLNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsNDQxLDEzLDExNjUNCjIwMjYtMDgtMTgsU1BSLUFCLNCQ0LHQvtC90LXQvNC10L3Rgi3Qv9C70LDQvSDRgtGA0LXQvdC40YDQvtCy0L7QuiAo0LrQsNGA0YLQvtGH0LrQsCks0JDQutGB0LXRgdGB0YPQsNGA0YssMCwwLDAsMCwyMjAsMTMsMTE2NQ0KMjAyNi0wOC0xOSxTUFItQUIs0JDQsdC+0L3QtdC80LXQvdGCLdC/0LvQsNC9INGC0YDQtdC90LjRgNC+0LLQvtC6ICjQutCw0YDRgtC+0YfQutCwKSzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDUwMCwxMywxMTY1DQoyMDI2LTA4LTIwLFNQUi1BQizQkNCx0L7QvdC10LzQtdC90YIt0L/Qu9Cw0L0g0YLRgNC10L3QuNGA0L7QstC+0LogKNC60LDRgNGC0L7Rh9C60LApLNCQ0LrRgdC10YHRgdGD0LDRgNGLLDIsNDk4MCw5NDUsMCw0MjUsMTIsMTE2NQ0KMjAyNi0wOC0yMSxTUFItQUIs0JDQsdC+0L3QtdC80LXQvdGCLdC/0LvQsNC9INGC0YDQtdC90LjRgNC+0LLQvtC6ICjQutCw0YDRgtC+0YfQutCwKSzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDQ5NCwxMiwxMTY1DQoyMDI2LTA4LTIyLFNQUi1BQizQkNCx0L7QvdC10LzQtdC90YIt0L/Qu9Cw0L0g0YLRgNC10L3QuNGA0L7QstC+0LogKNC60LDRgNGC0L7Rh9C60LApLNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsODk1LDEyLDExNjUNCjIwMjYtMDgtMjMsU1BSLUFCLNCQ0LHQvtC90LXQvNC10L3Rgi3Qv9C70LDQvSDRgtGA0LXQvdC40YDQvtCy0L7QuiAo0LrQsNGA0YLQvtGH0LrQsCks0JDQutGB0LXRgdGB0YPQsNGA0YssMiw0OTgwLDg1OCwxLDMzMiwxMSwxMTY1DQoyMDI2LTA4LTI0LFNQUi1BQizQkNCx0L7QvdC10LzQtdC90YIt0L/Qu9Cw0L0g0YLRgNC10L3QuNGA0L7QstC+0LogKNC60LDRgNGC0L7Rh9C60LApLNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsNjI4LDExLDExNjUNCjIwMjYtMDgtMjUsU1BSLUFCLNCQ0LHQvtC90LXQvNC10L3Rgi3Qv9C70LDQvSDRgtGA0LXQvdC40YDQvtCy0L7QuiAo0LrQsNGA0YLQvtGH0LrQsCks0JDQutGB0LXRgdGB0YPQsNGA0YssMCwwLDAsMCwyOTgsMTEsMTE2NQ0KMjAyNi0wOC0yNixTUFItQUIs0JDQsdC+0L3QtdC80LXQvdGCLdC/0LvQsNC9INGC0YDQtdC90LjRgNC+0LLQvtC6ICjQutCw0YDRgtC+0YfQutCwKSzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDE4MCwxMSwxMTY1DQoyMDI2LTA4LTI3LFNQUi1BQizQkNCx0L7QvdC10LzQtdC90YIt0L/Qu9Cw0L0g0YLRgNC10L3QuNGA0L7QstC+0LogKNC60LDRgNGC0L7Rh9C60LApLNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsMCwxMSwxMTY1DQoyMDI2LTA4LTI4LFNQUi1BQizQkNCx0L7QvdC10LzQtdC90YIt0L/Qu9Cw0L0g0YLRgNC10L3QuNGA0L7QstC+0LogKNC60LDRgNGC0L7Rh9C60LApLNCQ0LrRgdC10YHRgdGD0LDRgNGLLDEsMjQ5MCw0NDQsMCwxMzEsMTEsMTE2NQ0KMjAyNi0wOC0yOSxTUFItQUIs0JDQsdC+0L3QtdC80LXQvdGCLdC/0LvQsNC9INGC0YDQtdC90LjRgNC+0LLQvtC6ICjQutCw0YDRgtC+0YfQutCwKSzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDY2NywxMSwxMTY1DQoyMDI2LTA4LTE2LFNQUi1CVEws0JHRg9GC0YvQu9C60LAg0YHQv9C+0YDRgtC40LLQvdCw0Y8gNzUwINC80Lss0JDQutGB0LXRgdGB0YPQsNGA0YssMiw0OTgwLDg2NCwwLDEyNSw4NCwxMDk5DQoyMDI2LTA4LTE3LFNQUi1CVEws0JHRg9GC0YvQu9C60LAg0YHQv9C+0YDRgtC40LLQvdCw0Y8gNzUwINC80Lss0JDQutGB0LXRgdGB0YPQsNGA0YssMiw0OTgwLDk0MCwwLDU4OSw4MywxMDk5DQoyMDI2LTA4LTE4LFNQUi1CVEws0JHRg9GC0YvQu9C60LAg0YHQv9C+0YDRgtC40LLQvdCw0Y8gNzUwINC80Lss0JDQutGB0LXRgdGB0YPQsNGA0YssMCwwLDAsMCw4MTcsODMsMTA5OQ0KMjAyNi0wOC0xOSxTUFItQlRMLNCR0YPRgtGL0LvQutCwINGB0L/QvtGA0YLQuNCy0L3QsNGPIDc1MCDQvNC7LNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsODY3LDgzLDEwOTkNCjIwMjYtMDgtMjAsU1BSLUJUTCzQkdGD0YLRi9C70LrQsCDRgdC/0L7RgNGC0LjQstC90LDRjyA3NTAg0LzQuyzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDI2Miw4MywxMDk5DQoyMDI2LTA4LTIxLFNQUi1CVEws0JHRg9GC0YvQu9C60LAg0YHQv9C+0YDRgtC40LLQvdCw0Y8gNzUwINC80Lss0JDQutGB0LXRgdGB0YPQsNGA0YssMCwwLDAsMCw3MzAsODMsMTA5OQ0KMjAyNi0wOC0yMixTUFItQlRMLNCR0YPRgtGL0LvQutCwINGB0L/QvtGA0YLQuNCy0L3QsNGPIDc1MCDQvNC7LNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsMzE4LDgzLDEwOTkNCjIwMjYtMDgtMjMsU1BSLUJUTCzQkdGD0YLRi9C70LrQsCDRgdC/0L7RgNGC0LjQstC90LDRjyA3NTAg0LzQuyzQkNC60YHQtdGB0YHRg9Cw0YDRiywxLDI0OTAsNDM4LDAsNDExLDgzLDEwOTkNCjIwMjYtMDgtMjQsU1BSLUJUTCzQkdGD0YLRi9C70LrQsCDRgdC/0L7RgNGC0LjQstC90LDRjyA3NTAg0LzQuyzQkNC60YHQtdGB0YHRg9Cw0YDRiywxLDI0OTAsNDE3LDAsMCw4MywxMDk5DQoyMDI2LTA4LTI1LFNQUi1CVEws0JHRg9GC0YvQu9C60LAg0YHQv9C+0YDRgtC40LLQvdCw0Y8gNzUwINC80Lss0JDQutGB0LXRgdGB0YPQsNGA0YssMCwwLDAsMCwwLDgzLDEwOTkNCjIwMjYtMDgtMjYsU1BSLUJUTCzQkdGD0YLRi9C70LrQsCDRgdC/0L7RgNGC0LjQstC90LDRjyA3NTAg0LzQuyzQkNC60YHQtdGB0YHRg9Cw0YDRiywwLDAsMCwwLDAsODMsMTA5OQ0KMjAyNi0wOC0yNyxTUFItQlRMLNCR0YPRgtGL0LvQutCwINGB0L/QvtGA0YLQuNCy0L3QsNGPIDc1MCDQvNC7LNCQ0LrRgdC10YHRgdGD0LDRgNGLLDAsMCwwLDAsMCw4MywxMDk5DQoyMDI2LTA4LTI4LFNQUi1CVEws0JHRg9GC0YvQu9C60LAg0YHQv9C+0YDRgtC40LLQvdCw0Y8gNzUwINC80Lss0JDQutGB0LXRgdGB0YPQsNGA0YssMCwwLDAsMCw2NzIsODMsMTA5OQ0KMjAyNi0wOC0yOSxTUFItQlRMLNCR0YPRgtGL0LvQutCwINGB0L/QvtGA0YLQuNCy0L3QsNGPIDc1MCDQvNC7LNCQ0LrRgdC10YHRgdGD0LDRgNGLLDEsMjQ5MCw0MTQsMCw0OTQsODMsMTA5OQ0K';
+// демо = вшитый учебный CSV (30 товаров): идёт через общий импорт (долив, тосты, сохранение кэша)
+// atob даёт сырые байты: переводим в массив байт и декодируем как UTF-8, иначе русские названия ломаются
+$('#sampleFillBtn').onclick=()=>{ try{ dlg.close(); importCSV(new TextDecoder('utf-8').decode(Uint8Array.from(atob(SAMPLE_CSV_B64),c=>c.charCodeAt(0)))); }catch(e){ toast('Ошибка: '+e.message,true); } };
+$('#clearCostBtn').onclick=()=>{ state.costs={}; localStorage.removeItem('wb_costs'); renderAll(); renderCostTable(); toast('Себестоимости очищены'); };
+
+/* ---------- Старт ---------- */
+async function init(){
+  // тема
+  const savedTheme=localStorage.getItem('wb_theme')||'';
+  if(savedTheme) document.documentElement.dataset.theme=savedTheme;
+  applyThemeIcon();
+  // разовая уборка: старые кэши и ключи от удалённого API-режима больше не нужны
+  ['wb_sales_cache','wb_orders_cache','wb_adv_cache','wb_adv_campaigns','wb_adv_campaigns_ts',
+   'wb_goods_cache','wb_daily_cache','wb_last_sync','wb_token_enc','wb_browser_key','wb_token']
+    .forEach(k=>localStorage.removeItem(k));
+  // данные: последний загруженный CSV, иначе демо
+  let loaded=false;
+  let userCsv=false;   // последним грузили свой файл (не выгрузку API)
+  const csvCache=localStorage.getItem('wb_csv_cache');
+  if(csvCache){
+    try{
+      const c=JSON.parse(csvCache);
+      if(c && c.daily && c.daily.length){ state.goods=c.goods||[]; state.daily=c.daily; state.stockByArticle=c.stockByArticle||{}; state.source='csv'; state.lastSync=c.lastSync||null; state.sourceName=c.sourceName||null; state.lastIngest=c.lastIngest||null; loaded=true; userCsv=c.sourceName!=='продажи-из-api.csv'; }
+    }catch(e){ /* повреждённый кэш — показываем демо */ }
+  }
+  // Автоподхват выгрузки API (27.10.2026 — урок пустого радара): пока
+  // данных нет совсем, или последний источник — сама выгрузка API
+  // (обновляем до свежего дня), или данные устарели (последний день
+  // старше 3 суток) — берём выгрузку из папки сами, не дожидаясь
+  // нажатия кнопки. Свой свежий CSV (реклама, себестоимость) молча
+  // не заменяем.
+  if(!loaded || !userCsv || staleDailyDays()>3){
+    if(await importApiReplace(true)){
+      loaded=true;
+      if(userCsv) toast('Показана свежая выгрузка API — предыдущий CSV заменён. Рекламные расходы из него вернуть: загрузите свой файл заново (кружок в шапке).',true);
+    }
+  }
+  if(!loaded) loadDemo();
+  await loadSnapshot();
+  // названия из карты артикулов — если данные пришли из выгрузки API (без имён)
+  state.artMap=await loadArtMap();
+  applyArtNames(state.artMap);
+  state.apiSum=await loadApiSum();
+  state.apiStamp=await loadApiStock();
+  // свежий срез остатков от выгрузки — надёжнее колонки «Остатки» в CSV
+  if(state.apiStamp && state.apiStamp.byArt){
+    Object.keys(state.apiStamp.byArt).forEach(a=>{ state.stockByArticle[a]=state.apiStamp.byArt[a]; });
+  }
+  state.cardSubjects=await loadCards();
+  state.apiReports=await loadReports();
+  // если в кэше CSV данные за другое время, чем прошлый диапазон, — подгоним период под них
+  if(loaded && state.daily.length){
+    const fMin=new Date(state.daily[0].date+'T00:00:00');
+    const fMax=addDays(new Date(state.daily[state.daily.length-1].date+'T00:00:00'),1);
+    const pr=periodRange();
+    if(fMax<=pr.from || fMin>=pr.to){
+      state.period='custom'; state.customFrom=fMin; state.customTo=fMax;
+    }
+  }
+  // диапазон по умолчанию: с начала года по сегодня
+  const yStart=new Date(new Date().getFullYear(),0,1);
+  if(!state.customFrom) state.customFrom=yStart;
+  if(!state.customTo) state.customTo=new Date();
+  $('#fromDate').value=isoDate(state.customFrom);
+  $('#toDate').value=isoDate(state.customTo);
+  renderAll();
+}
+function loadDemo(){ const d=buildDemo(); state.goods=d.goods; state.daily=d.daily; state.stockByArticle=d.stockByArticle; state.source='demo'; }
+
+/* ---------- Срез цен конкурентов (этап 3) ---------- */
+// data-snapshot.json рядом с дашбордом пишет Seller-Price-Radar (или выгрузка
+// радара). Файла может не быть — тогда блок «Позиция по цене» просто скрыт,
+// а в панели тревог стоит пометка, что среза нет. Дашборд ничего не падает.
+// надёжных пар в срезе: жёсткое или «по смыслу» — по двухступенчатой оценке
+function goodPairs(){
+  const byName={};
+  state.snapshot.rows.forEach(r=>{
+    const k=normName(r.my_name);
+    (byName[k]=byName[k]||[]).push(r.comp_name);
+  });
+  let good=0;
+  state.goods.forEach(g=>{
+    (byName[normName(g.name)]||[]).forEach(c=>{
+      const t=matchPair(g.name,c).tier;
+      if(t==='hard'||t==='soft') good++;
+    });
+  });
+  return good;
+}
+async function loadSnapshot(){
+  state.snapshot=null;
+  try{
+    const res=await fetch('data-snapshot.json?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return;                       // нет файла или недоступен — живём без среза
+    const snap=await res.json();
+    if(snap && Array.isArray(snap.rows) && snap.rows.length){
+      state.snapshot={date:String(snap.snapshot||''), rows:snap.rows};
+    }
+  }catch(e){ /* нет файла или недоступен — живём без среза */ }
+}
+function normName(s){
+  return String(s||'').toLowerCase().replace(/[^а-яёa-z0-9]+/gi,' ');
+}
+/* ---------- Ежедневная выгрузка по API (этап 4) ---------- */
+// продажи-из-api.csv рядом с дашбордом пишет fetch-продажи.py (launchd по
+// включению). Файла может не быть (первый день, сервер не запущен) —
+// тогда сверка просто не показывается, а в панели остаётся подсказка.
+// Сверка (двойная трасса) идёт по общим датам API и бухгалтерии.
+async function loadApiSum(){
+  try{
+    const res=await fetch('продажи-из-api.csv?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return null;
+    const text=await res.text();
+    const rows=parseCSV(text);
+    if(!rows.length) return null;
+    const dayMap=new Map();
+    rows.forEach(r=>{
+      const date=String(r['Дата']||'').slice(0,10);
+      if(!date) return;
+      const art=String(r['Артикул']||'');
+      const line={qty:+(r['Продано шт']||0)||0,
+                  rev:+(r['Выручка ₽']||0)||0,
+                  orders:+(r['Заказы шт']||0)||0,
+                  ret:+(r['Возвраты шт']||0)||0,
+                  comm:+(r['Комиссия ₽']||0)||0};
+      if(!dayMap.has(date)) dayMap.set(date,{});
+      dayMap.get(date)[art]=line;
+    });
+    return dayMap;
+  }catch(e){ return null; }   // файл:// или сервер не запущен — живём без выгрузки
+}
+async function loadApiStock(){
+  try{
+    const res=await fetch('data-api/остатки-последние.json?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return null;
+    const s=await res.json();
+    const stocks=s.остатки||{};
+    // сшиваем остатки с товарами по nmId через карту артикулов: у карточки
+    // WB nmId, у товара дашборда — SPR-артикул; ключи файла — строки
+    const byArt={};
+    Object.entries(state.artMap||{}).forEach(([spr,e])=>{
+      const qty=stocks[String(e.nm_id)];
+      if(qty!=null) byArt[spr]=qty;
+    });
+    return {срез:s.срез||'', товаров:Object.keys(stocks).length, byArt};
+  }catch(e){ return null; }
+}
+// карта-артикулов.json: SPR-артикул → название и nmId на витрине (пишет
+// карта-артикулов.py). В выгрузке API названий нет — без карты у товаров
+// дашборда не появятся имена, и сопоставление цен конкурентов работает.
+async function loadArtMap(){
+  try{
+    const res=await fetch('карта-артикулов.json?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return null;
+    const j=await res.json();
+    const m={};
+    (j.соответствия||[]).forEach(c=>{ if(c.nm_id) m[c.spr]={name:c.name_spr, nm_id:c.nm_id}; });
+    return m;
+  }catch(e){ return null; }
+}
+function applyArtNames(map){
+  if(!map) return;
+  state.goods.forEach(g=>{
+    const e=map[g.article];
+    if(e){
+      // «Товар 2373» — автоимпорт генерирует пустышки; настоящие названия из карты важнее
+      if(!g.name || /^Товар\s/.test(g.name)) g.name=e.name;
+      g.nmId=String(e.nm_id);
+    }
+  });
+}
+/* ---------- Отчёты реализации: точные финансы WB ---------- */
+// data-api/отчёты-реализации.json пишет ежедневная выгрузка (финансовый API
+// WB): понедельные суммы «продано»/«к перечислению» — ТОЧНАЯ комиссия
+// вместо упрощённой оценки выгрузки продаж. Файла может не быть — тогда
+// блок просто скрыт, остальной дашборд не страдает.
+// data-api/карточки.json пишет выгрузка (карточки WB: nmId → предмет).
+// Из предметов собираются ГРУППЫ иерархии «тип → товар»: колонки «тип»
+// в выгрузке продаж нет. Файла может не быть — тогда все товары в
+// «Без группы», остальной дашборд не страдает.
+async function loadCards(){
+  try{
+    const res=await fetch('data-api/карточки.json?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return {};
+    const j=await res.json();
+    return (j && j.предметы) || {};
+  }catch(e){ return {}; }
+}
+// Группа товара (иерархия фильтра): ручной тип → предмет WB → «Без группы»
+function groupOf(g){
+  const manual=artType(g.article);
+  if(manual) return manual;
+  const subj=g.nmId!=null ? state.cardSubjects[String(g.nmId)] : null;
+  return subj||GROUP_NONE;
+}
+async function loadReports(){
+  try{
+    const res=await fetch('data-api/отчёты-реализации.json?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok) return null;
+    const j=await res.json();
+    if(!j || !Array.isArray(j.отчёты)) return null;
+    // тип 1 — реализация продаж; тип 2 — отдельный финансовый кусок,
+    // в сумму реализации его включать нельзя (иначе задвоится)
+    const rows=j.отчёты.filter(r=>r.reportType===1)
+      .map(r=>({from:String(r.dateFrom||''), to:String(r.dateTo||''),
+                retail:+r.retailAmountSum||0, forPay:+r.forPaySum||0,
+                delivery:+r.deliveryServiceSum||0, storage:+r.paidStorageSum||0,
+                acceptance:+r.paidAcceptanceSum||0, deduction:+r.deductionSum||0,
+                penalty:+r.penaltySum||0}))
+      .sort((a,b)=>a.from<b.from?-1:1);
+    if(!rows.length) return null;
+    const sum=f=>rows.reduce((s,r)=>s+f(r),0);
+    return {rows, период:j.период||'', срез:j.срез||'',
+            retail:sum(r=>r.retail), forPay:sum(r=>r.forPay),
+            delivery:sum(r=>r.delivery), storage:sum(r=>r.storage),
+            acceptance:sum(r=>r.acceptance), deduction:sum(r=>r.deduction),
+            penalty:sum(r=>r.penalty)};
+  }catch(e){ return null; }
+}
+function renderReports(){
+  const card=$('#reportsCard');
+  if(!card) return;
+  const rp=state.apiReports;
+  if(!rp || !rp.rows.length){ card.style.display='none'; return; }
+  card.style.display='';
+  $('#reportsSub').textContent=`${rp.период} · недель ${rp.rows.length} · срез ${rp.срез}`;
+  const fmtFull=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
+  $('#reportsHead').innerHTML='<tr><th>Неделя</th><th class="num">Продано, ₽</th>'
+    +'<th class="num">К перечислению, ₽</th><th class="num">Удержания WB, ₽</th><th class="num">Доля</th></tr>';
+  $('#reportsBody').innerHTML=rp.rows.slice().reverse().map(r=>{
+    const hold=r.retail-r.forPay;
+    const pct=r.retail>0?(hold/r.retail*100).toFixed(1)+'%':'—';
+    return `<tr><td>${r.from}…${r.to}</td><td class="num">${fmtFull(r.retail)}</td>`
+      +`<td class="num">${fmtFull(r.forPay)}</td>`
+      +`<td class="num">${hold<0?'<span class="profit-neg">':''}${fmtFull(hold)}${hold<0?'</span>':''}</td>`
+      +`<td class="num">${pct}</td></tr>`;
+  }).join('');
+  const hold=rp.retail-rp.forPay;
+  const pct=rp.retail>0?(hold/rp.retail*100).toFixed(1)+'%':'—';
+  $('#reportsNote').innerHTML=`Итого за период: продано <b>${fmtFull(rp.retail)}</b> → к перечислению <b>${fmtFull(rp.forPay)}</b> `
+    +`(разница <b>${fmtFull(hold)}</b>, ${pct}). Из строк отчётов: доставка/комиссия ${fmtFull(rp.delivery)}, `
+    +`хранение ${fmtFull(rp.storage)}, приёмка ${fmtFull(rp.acceptance)}, удержания ${fmtFull(rp.deduction)}, штрафы ${fmtFull(rp.penalty)}. `
+    +`Внимание: WB сводит в недельный платёж и перерасчёты других недель — в такие недели «к перечислению» бывает больше, `
+    +`чем «продано» (отрицательная доля, отмечено красным): держательства и переплаты сходятся на горизонте месяцев. `
+    +`WB публикует отчёты понедельными кусками с задержкой около недели. `
+    +`Комиссия в таблице товаров остаётся упрощённой оценкой выгрузки.`;
+}
+// наша фактическая цена продажи: медиана (выручка/шт) по дням с продажами
+function ourUnitPrices(){
+  const acc={};
+  state.goods.forEach(g=>{ if(acc[g.article]==null) acc[g.article]=[]; });
+  state.daily.forEach(d=>d.lines.forEach(l=>{
+    if(l.qty>0 && l.revenue>0 && acc[l.article]) acc[l.article].push(l.revenue/l.qty);
+  }));
+  const out={};
+  Object.keys(acc).forEach(a=>{
+    const arr=acc[a].sort((x,y)=>x-y);
+    out[a]=arr.length?arr[Math.floor(arr.length/2)]:null;
+  });
+  return out;
+}
+
+/* ---------- Сопоставление товаров конкурентов (двухступенчатое) ---------- */
+// Названия у каждого продавца свои («Утяжелители для ног 500гр» против
+// «0,5 кг утяжелители для ног, спортивные»), поэтому чистое сравнение
+// текста не работает (известная проблема product matching). Схема:
+// 1) ЖЁСТКИЕ признаки, вынутые из названия: тип изделия, вес, комплект «N шт»,
+//    детское/взрослое, наполнение. Конфликт по любому известному признаку
+//    → «не тот товар», пара отбрасывается.
+// 2) СМЫСЛ оставшихся слов: Jaccard по токенам + биграммы (порядок слов,
+//    добавки «спортивные» и бренды не мешают). Итог — уровень пары:
+//    «жёсткое» (признаки совпали), «по смыслу», «слабое», «не тот товар».
+const TYPE_RULES=[   // порядок важен: первые правила забирают своих
+  ['жилет',/жилет/],
+  ['сэндбэг',/с[эе]ндб[эе]г|пауэрб[эе]г|мешок|сумка/],
+  ['гиря',/гир[яи]/],
+  ['парашют',/парашют/],
+  ['мяч',/мяч/],
+  ['пояс',/пояс/],
+  ['тренажёр шеи',/упряж[ья]?|тренаж[её]р/],
+  ['набор грузов',/набор грузов/],
+  ['петли',/петли/],
+  ['шорты',/шорты/],
+  ['костюм',/кост[юь]м|термо/],
+  ['утяжелители',/утяжелител/],
+];
+const STOP_TOKENS=new Set(['для','и','шт','от','spr','pro','sprpro',/* свои бренды дописывает владелец */]);
+function typeOf(s){
+  const low=String(s).toLowerCase();
+  for(const [name,re] of TYPE_RULES) if(re.test(low)) return name;
+  return null;
+}
+function weightKg(s){
+  const m=String(s).toLowerCase().replace(',','.')
+    .match(/(\d+(?:\.\d+)?)\s*(кг|гр\b|грамм|г\b)/);
+  if(!m) return null;
+  return m[2].startsWith('кг') ? parseFloat(m[1]) : parseFloat(m[1])/1000;
+}
+function pcsOf(s){
+  const m=String(s).toLowerCase().match(/(\d+)\s*шт/);
+  return m?Number(m[1]):null;
+}
+function detOf(s){
+  const low=String(s).toLowerCase();
+  if(/детск|для детей/.test(low)) return 'дет';
+  if(/для взрослых/.test(low)) return 'орг';
+  return null;
+}
+function fillerOf(s){
+  const low=String(s).toLowerCase();
+  if(/(с грузами|грузы|груз|металл|сталь)/.test(low)) return 'грузы';
+  if(/мягк/.test(low)) return 'мягкая';
+  if(/песок/.test(low)) return 'песок';
+  return null;
+}
+function softTokens(s){
+  // убираем цифры с единицами — они уже сравнены как жёсткие признаки
+  return String(s).toLowerCase()
+    .replace(/[^а-яёa-z0-9]+/gi,' ')
+    .split(' ').filter(t=>{
+      if(!t||STOP_TOKENS.has(t)) return false;
+      if(/\d/.test(t)) return false;
+      return t.length>=3;
+    });
+}
+function pairSoftScore(a,b){
+  const ta=softTokens(a),tb=softTokens(b);
+  const setA=new Set(ta),setB=new Set(tb);
+  let inter=0; setA.forEach(t=>{ if(setB.has(t)) inter++; });
+  const jac=setA.size&&setB.size?inter/(setA.size+setB.size-inter):0;
+  const dice=(x,y)=>{                 // биграммы строки — устойчиво к опечаткам
+    if(x.length<2||y.length<2) return 0;
+    const bx=new Set(),by=new Set();
+    for(let i=0;i<x.length-1;i++) bx.add(x.slice(i,i+2));
+    for(let i=0;i<y.length-1;i++) by.add(y.slice(i,i+2));
+    let bi=0; bx.forEach(g=>{ if(by.has(g)) bi++; });
+    return 2*bi/(bx.size+by.size);
+  };
+  return Math.min(1,Math.max(jac*1.2,dice(ta.join(' '),tb.join(' '))));
+}
+function matchPair(mine,comp){
+  // жёсткие признаки: известны = вынуты у ОБОИХ товаров
+  const attrs=[
+    ['тип', typeOf(mine), typeOf(comp)],
+    ['вес', weightKg(mine), weightKg(comp)],
+    ['комплект', pcsOf(mine), pcsOf(comp)],
+    ['детское', detOf(mine), detOf(comp)],
+    ['наполнение', fillerOf(mine), fillerOf(comp)],
+  ];
+  let hardPairs=0, conflict=null;
+  for(const [label,a,b] of attrs){
+    if(a==null||b==null) continue;
+    if(a===b){ hardPairs++; continue; }
+    // вес: допуск 5% на «1 кг» против «1000 г» и разницу форматов записи
+    if(label==='вес' && a>0 && b>0 && Math.abs(a-b)/Math.max(a,b)<=0.05){
+      hardPairs++; continue;
+    }
+    conflict=label;
+    break;                          // главный конфликт — первым (тип, затем вес…)
+  }
+  const soff=pairSoftScore(mine,comp);
+  if(conflict) return {tier:'none',soft:soff,conflict};
+  if(hardPairs>=1 && soff>=0.25) return {tier:'hard',soft:soff};
+  if(hardPairs>=1) return {tier:'soft',soft:soff};        // признаки совпали, формулировки далеко
+  if(soff>=0.55) return {tier:'soft',soft:soff};          // признаков мало, но по смыслу очень близко
+  return {tier:'weak',soft:soff};
+}
+/* ===== Радар цен: состояние вкладки и отрисовка ============================= */
+/* Фильтр и порядок на вкладке «Радар цен» (жить только на время страницы) */
+const radarFilter={pos:'all',q:'',byDiff:true};
+let priceRows=[];              // строки последнего расчёта пар (см. renderPrice)
+const badgeOf=d=>d<-0.03?'cheap':d>0.03?'expensive':'equal';
+const tierBadgeOf=t=>t==='hard'
+  ?'<span class="abc-badge a">жёсткое</span>'
+  :'<span class="abc-badge b">по смыслу</span>';
+const escHtml=s=>String(s).replace(/[&<>"]/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* Полоса срочных разрывов на главной: только расхождения от 10%, топ-3,
+   без перегружающих деталей (полный разбор — на вкладке «Радар цен»). */
+function renderGaps(){
+  const card=$('#gapsCard'); if(!card) return;
+  const urg=(priceRows||[]).filter(r=>{
+    const b=badgeOf(r.diff);
+    return b!=='equal'&&Math.abs(r.diff)>=0.10;
+  });
+  if(!urg.length){ card.style.display='none'; return; }
+  card.style.display='';
+  const dt=state.snapshot&&state.snapshot.date?state.snapshot.date:'—';
+  $('#gapsSub').innerHTML=`срез ${dt} · расхождений ≥10%: ${urg.length}`;
+  $('#gapsList').innerHTML=urg.slice(0,3).map(r=>{
+    const b=badgeOf(r.diff), lab=b==='cheap'?'дешевле':'дороже';
+    const sign=b==='cheap'?'−':'+';
+    const word=b==='cheap'
+      ?'цена ниже рынка — можно поднять и оставить маржу'
+      :'цена выше рынка — позиция в выдаче и выкуп могут проседать';
+    return `<li><b>${escHtml(r.name)}</b> — <span class="abc-badge ${b==='cheap'?'a':'b'}">${sign}${(Math.abs(r.diff)*100).toFixed(0)}% ${lab} медианы</span> · наша ${fmtR(r.mine)} против медианы ${fmtR(r.med)} · ${word}</li>`;
+  }).join('')+(urg.length>3?`<li class="muted">…и ещё ${urg.length-3} товаров</li>`:'');
+}
+
+/* Таблица вкладки «Радар цен»: все пары с фильтром, поиском и порядком */
+function renderRadarTable(){
+  const card=$('#priceCard');
+  if(!state.snapshot){ card.style.display='none'; return; }
+  card.style.display='';
+  let rows=priceRows.filter(r=>radarFilter.pos==='all'||badgeOf(r.diff)===radarFilter.pos);
+  const q=radarFilter.q.trim().toLowerCase();
+  if(q) rows=rows.filter(r=>r.name.toLowerCase().includes(q));
+  rows=radarFilter.byDiff
+    ? rows.slice().sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff))
+    : rows.slice().sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+  $('#priceHead').innerHTML=`<tr>${['Товар','Наша цена','Медиана конкурентов','Мин. конкурент','Сопоставлено','Разница','Позиция']
+    .map((h,i)=>`<th class="${i>=3&&i<5?'tbl-hide-920':(i===2?'tbl-hide-560':'')}">${h}</th>`).join('')}</tr>`;
+  $('#priceBody').innerHTML=rows.map(r=>{
+    const b=badgeOf(r.diff);
+    const lab=b==='cheap'?'дешевле':b==='expensive'?'дороже':'наравне';
+    const low = r.n<3;   // меньше 3 пар — доверять сравнению нельзя (практика мониторинга)
+    return `<tr>
+      <td>${r.name}</td>
+      <td class="num">${fmtR(r.mine)}</td>
+      <td class="num tbl-hide-560">${fmtR(r.med)}</td>
+      <td class="num tbl-hide-920">${fmtR(r.min)}</td>
+      <td class="center tbl-hide-920"><span class="${low?'warn-num':''}">${r.n}/${r.total}</span> ${tierBadgeOf(r.bestTier)}${low?' <span class="warn-num">мало</span>':''}</td>
+      <td class="num tbl-hide-920 ${r.diff<0?'profit-pos':r.diff>0?'profit-neg':''}">${r.diff>0?'+':''}${Math.abs((r.diff*100).toFixed(0))==0?0:Number((r.diff*100).toFixed(0))}%</td>
+      <td class="center"><span class="abc-badge ${b==='cheap'?'a':b==='expensive'?'b':'c'}">${lab}</span></td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="7" class="muted">Ничего не найдено — измените фильтр или поиск</td></tr>';
+}
+
+function renderPrice(){
+  const card=$('#priceCard');
+  if(!state.snapshot){ card.style.display='none'; renderGaps(); return; }
+  card.style.display='';
+  // конкуренты снапшота, сгруппированные по нашему товару (по названию)
+  const byName={};
+  state.snapshot.rows.forEach(r=>{
+    const k=normName(r.my_name);
+    (byName[k]=byName[k]||[]).push(r);
+  });
+  const ourP=ourUnitPrices();
+  const rows=[];
+  state.goods.forEach(g=>{
+    const pairs=byName[normName(g.name)]||[];
+    if(!pairs.length) return;
+    const mine=ourP[g.article];
+    // каждую пару «наш ↔ конкурент» судит двухступенчатый механизм:
+    // жёсткие признаки против конфликта, затем близость названий
+    const judged=pairs.map(r=>{
+      const m=matchPair(g.name,r.comp_name);
+      return {price:r.comp_price,tier:m.tier};
+    });
+    const used=judged.filter(j=>j.tier==='hard'||j.tier==='soft');
+    if(mine==null||!used.length) return;
+    // выбросы: цены-аномалии вокруг медианы срезаются по 3,5 MAD
+    // (конкурент в распродаже или ошибся в карточке) — практика
+    // мониторинга цен: базовая опора медиана, среднее только с 5+ пар
+    const sortedAll=used.map(j=>j.price).sort((a,b)=>a-b);
+    let vals=sortedAll;
+    const med0=sortedAll[Math.floor(sortedAll.length/2)];
+    const mads=sortedAll.map(p=>Math.abs(p-med0)).sort((a,b)=>a-b);
+    const mad=mads[Math.floor(mads.length/2)]*1.4826;
+    if(mad>0){
+      const clipped=sortedAll.filter(p=>Math.abs(p-med0)<=mad*3.5);
+      if(clipped.length>=3) vals=clipped;
+    }
+    const s=vals.length?vals:sortedAll;
+    const n=vals.length;               // надёжных пар после выбросо-среза
+    const med=s[Math.floor(s.length/2)];
+    const diff=med>0?(mine-med)/med:0;
+    const bestTier=judged.some(j=>j.tier==='hard')?'hard':'soft';
+    rows.push({article:g.article,name:g.name,mine,med,
+      min:s[0],n,total:judged.length,diff,bestTier,
+      discarded:judged.length-vals.length});
+  });
+  // сортировка: самое важное сверху — где расхождение цены заметнее
+  rows.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+  priceRows=rows;
+  // позиция: сравнение с медианой конкурентов; ±3% — «наравне»
+  renderGaps();
+  renderRadarTable();
+  const cheap=rows.filter(r=>badgeOf(r.diff)==='cheap').length,
+        exp=rows.filter(r=>badgeOf(r.diff)==='expensive').length,
+        eq=rows.length-cheap-exp,
+        lowCov=rows.filter(r=>r.n<3).length,
+        lowNames=rows.filter(r=>r.n<3).map(r=>r.name).slice(0,3).join(', ');
+  const totalPairs=rows.reduce((s,r)=>s+r.total,0),
+        goodPairs=rows.reduce((s,r)=>s+r.n,0);
+  const dt=state.snapshot.date?state.snapshot.date:'—';
+  // свежесть среза: старше 3 дней — жёлтая метка (цены конкурентов устаревают)
+  let ageTxt=''; let ageCls='';
+  if(state.snapshot.date){
+    const d0=new Date(state.snapshot.date+'T00:00:00');
+    const now=new Date();
+    const age=Math.round((now-d0)/864e5);
+    if(age>3){ ageTxt=` · срез старый: ${age} дн`; ageCls='warn-num'; }
+  }
+  $('#priceSub').innerHTML=`срез ${dt}${rows.length?` · товаров ${rows.length}`:''} <span class="${ageCls}">${ageTxt}</span>`;
+  $('#priceNote').textContent=rows.length
+    ?`Дешевле медианы конкурентов: ${cheap} · дороже: ${exp} · наравне (±3%): ${eq}. Позиция считается по надёжным парам: жёсткие признаки совпали (тип, вес, комплектность) либо названия близки по смыслу; «шумные» пары отброшено ${totalPairs-goodPairs}`+(lowCov>0?`. Мало пар (<3) у ${lowCov} товаров — по ним цифры ориентировочные${lowNames?': '+lowNames+'…':''}`:'')
+    :'Сопоставить наши товары с конкурентами не удалось — проверьте data-snapshot.json';
+}
+init().catch(e => console.error('init failed:', e));
+bindCostImport();
+
+/* Переключатель «Продажи / Радар цен»: скрывает/показывает разделы */
+const viewNav=$('#viewNav');
+if(viewNav){
+  document.body.dataset.view='sales';
+  viewNav.addEventListener('click',ev=>{
+    const btn=ev.target.closest('.view-tab'); if(!btn) return;
+    viewNav.querySelectorAll('.view-tab').forEach(b=>b.setAttribute('aria-selected',String(b===btn)));
+    document.body.dataset.view=btn.dataset.view;
+    const h1=document.querySelector('header h1');
+    if(h1) h1.textContent=btn.dataset.view==='radar'
+      ?'Радар цен — наши товары против конкурентов'
+      :'Анализ продаж на Wildberries';
+    window.scrollTo(0,0);
+  });
+}
+
+/* Инструменты вкладки «Радар цен»: фильтр позиции, поиск, порядок строк */
+const radarSeg=$('#radarSeg');
+if(radarSeg){
+  radarSeg.addEventListener('click',ev=>{
+    const btn=ev.target.closest('button[data-pos]');
+    if(!btn) return;
+    radarSeg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===btn)));
+    radarFilter.pos=btn.dataset.pos;
+    renderRadarTable();
+  });
+}
+const radarSearch=$('#radarSearch');
+if(radarSearch) radarSearch.addEventListener('input',()=>{ radarFilter.q=radarSearch.value; renderRadarTable(); });
+const radarSortBtn=$('#radarSortBtn');
+if(radarSortBtn) radarSortBtn.addEventListener('click',()=>{
+  radarFilter.byDiff=!radarFilter.byDiff;
+  radarSortBtn.textContent=radarFilter.byDiff?'⇅ по разнице':'⇅ по названию';
+  renderRadarTable();
+});
+
+/* Перерисовка графиков только там, где контейнер реально виден
+   (скрытая вкладка «Радар цен» даёт ширину 0 — рисовать нечего и нельзя). */
+function renderChartsSafe(){
+  const chartVisible = sel => {
+    const el = $(sel);
+    const wrap = el && (el.closest('.chart-wrap,.pie-wrap') || el.parentElement);
+    return wrap && wrap.getBoundingClientRect().width > 20;
+  };
+  if (chartVisible('#dynChart')) renderDyn();
+  if (chartVisible('#adsChart')) renderAds();
+  if (chartVisible('#profitChart')) renderProfit();
+  if (chartVisible('#stockChart')) renderStock();
+  updateTblScrollIndicator();
+}
+
+window.addEventListener('resize',()=>{ renderChartsSafe(); });
+
+/* ResizeObserver на контейнерах графиков и на самом .wrap — перерисовываем при смене ширины,
+   чтобы дашборд всегда занимал всю ширину окна (Safari не всегда ловит window.resize). */
+if(typeof ResizeObserver!=='undefined'){
+  let raf=0;
+  const onChange=()=>{ cancelAnimationFrame(raf); raf=requestAnimationFrame(renderChartsSafe); };
+  const obs=new ResizeObserver(onChange);
+  ['#dynChart','#adsChart','#profitChart','#stockChart'].forEach(sel=>{
+    const el=$(sel); if(!el)return; const wrap=el.closest('.chart-wrap,.pie-wrap')||el.parentElement;
+    if(wrap) obs.observe(wrap);
+  });
+  const wrapEl=$('.wrap'); if(wrapEl) obs.observe(wrapEl);
+}
+</script>
+</body>
+</html>

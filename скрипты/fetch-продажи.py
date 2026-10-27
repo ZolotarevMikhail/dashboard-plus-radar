@@ -1,0 +1,530 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Ежедневная выгрузка продаж по WB API (этап 4).
+
+Схема работы:
+  1) Ключ API берётся из .env рядом с проектом (WB_API_KEY) — в коде,
+     чате и гите ключа нет.
+  2) Выгрузка инкрементальная: каждый раз API отдаёт только строки,
+     которых у нас ещё нет (по метке изменения lastChangeDate). Свежие
+     строки дописываются в data-api/продажи-api.jsonl. Обрыв сети не
+     теряет данные — следующий запуск добирает недостающее.
+  3) Рядом пишется выгрузка-сводка по дням в формате бухгалтерского CSV
+     (те же колонки) — дашборд читает её кнопкой «⤓ CSV».
+  4) Сводка сверяется с бухгалтерией (двойная трасса): если расхождение
+     больше 1% — это будет видно в дашборде как красная метка.
+  5) Остатки берутся отдельным срезом (API остатков) в
+     data-api/остатки.json.
+
+Запуск: python3 fetch-продажи.py
+(по расписанию: launchd запускает ежедневно в 9:00; частые вызовы
+не страшны: скрипт молча выйдет, если сегодня уже выгружалось)
+"""
+import csv
+import json
+import os
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import defaultdict
+from datetime import datetime
+
+PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(PROJ, "data-api")
+ENV_PATH = os.path.join(PROJ, ".env")
+JSONL_PATH = os.path.join(DATA_DIR, "продажи-api.jsonl")
+CSV_PATH = os.path.join(PROJ, "продажи-из-api.csv")
+MAP_PATH = os.path.join(PROJ, "карта-артикулов.json")
+STATE_PATH = os.path.join(DATA_DIR, "состояние.json")
+STOCK_PATH = os.path.join(DATA_DIR, "остатки-последние.json")
+REPORTS_PATH = os.path.join(DATA_DIR, "отчёты-реализации.json")
+LOG_PATH = os.path.join(DATA_DIR, "журнал-выгрузки.txt")
+
+API_DOMAIN = "https://statistics-api.wildberries.ru"
+ANALYTICS_DOMAIN = "https://seller-analytics-api.wildberries.ru"
+ENDPOINT_SALES = API_DOMAIN + "/api/v1/supplier/sales"
+ENDPOINT_ORDERS = API_DOMAIN + "/api/v1/supplier/orders"
+# остатки-срез: старый /api/v1/supplier/stocks устарел (404) — новый
+# метод seller-analytics (POST, найден через каталог MCP)
+ENDPOINT_STOCKS = ANALYTICS_DOMAIN + "/api/analytics/v1/stocks-report/wb-warehouses"  # noqa: E501
+# финансовые отчёты реализации: источник ТОЧНОЙ комиссии и удержаний WB.
+# Старый /api/v5/supplier/reportDetailByPeriod сам отвечает 404
+# «deprecated»; замена finance (POST, найдена через каталог MCP).
+ENDPOINT_REPORTS = "https://finance-api.wildberries.ru" \
+                   "/api/finance/v1/sales-reports/list"
+# карточки (предмет/категория каждой позиции) — источник групп
+# иерархии «тип → товар» в дашборде
+ENDPOINT_CARDS = "https://content-api.wildberries.ru/content/v2/get/cards/list"
+
+# macOS-пакет Python без корневых сертификатов: фолбэк для публичного GET.
+# Тот же приём, что в радаре (wb-prices.py).
+SSL_CTX = ssl.create_default_context()
+try:
+    with urllib.request.urlopen("https://statistics-api.wildberries.ru",
+                                timeout=8, context=SSL_CTX):
+        pass
+except urllib.error.URLError as url_err:
+    if "certificate" in str(getattr(url_err, "reason", url_err)).lower():
+        SSL_CTX = ssl._create_unverified_context()
+except Exception:
+    pass
+
+RETRY_PAUSES_429 = (15, 30, 60, 90)   # WB лимитирует жёстко: пауза длинная
+RETRY_PAUSES_OTHER = (3, 6, 12, 24)
+MAX_ATTEMPTS = 4
+
+
+def load_token():
+    """Ключ API из .env рядом с проектом (только имя файла в коде)."""
+    if not os.path.isfile(ENV_PATH):
+        return None
+    with open(ENV_PATH, encoding="utf-8") as file:
+        for line in file:
+            if line.startswith("WB_API_KEY="):
+                value = line.split("=", 1)[1].strip()
+                if value:
+                    return value
+    return None
+
+
+def load_state():
+    """Состояние выгрузки: с какой даты продолжать, когда последний прогон."""
+    try:
+        with open(STATE_PATH, encoding="utf-8") as file:
+            return json.load(file)
+    except Exception:
+        return {"last_change": "2026-09-01T00:00:00", "last_ok_date": ""}
+
+
+def save_state(state):
+    with open(STATE_PATH, "w", encoding="utf-8") as file:
+        json.dump(state, file, ensure_ascii=False, indent=1)
+
+
+def log(message):
+    """Журнал прогонов: время + суть (для разбора, почему выгрузка не шла)."""
+    with open(LOG_PATH, "a", encoding="utf-8") as file:
+        file.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {message}\n")
+
+
+def api_get(url, params, token):
+    """GET к WB API с автоповтором: при 429 — долгие паузы, иначе короткие.
+
+    Возвращает список строк или None (после исчерпания попыток).
+    Лимит статистики: 1 запрос в минуту на метод — в цикле повтора
+    соблюдаем его автоматически (долгие паузы при 429).
+    """
+    query = "&".join(f"{key}={urllib.parse.quote(str(value))}"
+                     for key, value in params.items())
+    url = url + "?" + query
+    for attempt in range(MAX_ATTEMPTS):
+        request = urllib.request.Request(
+            url, headers={"Authorization": token,
+                          "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=60,
+                                        context=SSL_CTX) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            text = str(exc)
+            log(f"  попытка {attempt + 1}: {text}")
+            wait = (RETRY_PAUSES_429 if "429" in text
+                    else RETRY_PAUSES_OTHER)[attempt]
+            time.sleep(wait)
+    return None
+
+
+def row_type(row):
+    """Тип строки выгрузки: «S» продажа/возврат, «O» заказ.
+
+    Продажи и возвраты — строками метода sales (saleID начинается с
+    S… или R… по документации WB), заказы — строками метода orders
+    (у них есть поле isCancel). Метку пишем прямо в строку файла.
+    """
+    if "isCancel" in row:
+        return "O"
+    sale_id = row.get("saleID") or ""
+    return "S" if sale_id.startswith(("S", "R")) else "S"
+
+
+def write_jsonl(new_rows, seen_keys):
+    """Дописывает только новые строки (ключ: srid+артикул+дата продажи)."""
+    added = 0
+    with open(JSONL_PATH, "a", encoding="utf-8") as file:
+        for row in new_rows:
+            key = (row.get("srid"), row.get("supplierArticle"),
+                   row.get("date"))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            if "_t" not in row:
+                row["_t"] = row_type(row)
+            file.write(json.dumps(row, ensure_ascii=False,
+                                  separators=(",", ":")) + "\n")
+            added += 1
+    return added
+
+
+def read_existing_keys():
+    """Прочитать ключи уже сохранённых строк (дедупликация между прогонами)."""
+    seen = set()
+    if os.path.isfile(JSONL_PATH):
+        with open(JSONL_PATH, encoding="utf-8") as file:
+            for line in file:
+                try:
+                    row = json.loads(line)
+                    seen.add((row.get("srid"), row.get("supplierArticle"),
+                              row.get("date")))
+                except Exception:
+                    continue
+    return seen
+
+
+def mark_old_rows():
+    """Помечает тип строк файла, сохранённого до метки «_t» (один раз).
+
+    Строки-продажи/возвраты имеют saleID, строки-заказы — isCancel.
+    """
+    if not os.path.isfile(JSONL_PATH):
+        return
+    with open(JSONL_PATH, encoding="utf-8") as file:
+        lines = file.read().splitlines()
+    with open(JSONL_PATH, "w", encoding="utf-8") as file:
+        for line in lines:
+            try:
+                row = json.loads(line)
+                if "_t" not in row:
+                    row["_t"] = row_type(row)
+                    line = json.dumps(row, ensure_ascii=False,
+                                      separators=(",", ":"))
+            except Exception:
+                pass
+            file.write(line + "\n")
+
+
+def aggregate_csv_rows(sales_rows):
+    """Сводка по дням и артикулам в колонках бухгалтерского CSV.
+
+    Правила (по документации WB):
+      - продаётся = строка sales с saleID «S…»; возврат = «R…»;
+      - выручка = finishedPrice («фактическая цена с учётом всех
+        скидок»); возвраты вычитаются из выручки своего дня;
+      - комиссия = priceWithDisc − forPay — упрощённая оценка (WB сам
+        пишет расхождения с точным отчётом реализации); сверится в
+        двойной трассе с бухгалтерией;
+      - реклама API продавца не отдаёт — колонка пустая.
+    Строка без метки «_t» считается продажей (старый формат файла).
+    """
+    agg = defaultdict(lambda: defaultdict(float))
+    for row in sales_rows:
+        day = (row.get("date") or "")[:10]
+        article = row.get("supplierArticle", "")
+        is_return = (row.get("saleID") or "").startswith("R")
+        bucket = agg[(day, article)]
+        if row.get("_t") == "O":
+            bucket["orders"] += 1
+            continue
+        if is_return:
+            bucket["returns"] += 1
+            bucket["revenue"] -= row.get("finishedPrice") or 0
+        else:
+            bucket["qty"] += 1
+            bucket["revenue"] += row.get("finishedPrice") or 0
+            bucket["commission"] += (
+                (row.get("priceWithDisc") or 0) - (row.get("forPay") or 0))
+    csv_rows = []
+    for (day, article), numbers in sorted(agg.items()):
+        csv_rows.append({
+            "Дата": day, "Артикул": article,
+            "Заказы шт": int(numbers["orders"]) or "",
+            "Продано шт": int(numbers["qty"]),
+            "Выручка ₽": round(numbers["revenue"]),
+            "Комиссия ₽": round(numbers["commission"]),
+            "Возвраты шт": int(numbers["returns"]) or "",
+            "Реклама ₽": "", "Остатки шт": "",
+            "Себестоимость ₽/шт": "",
+        })
+    return csv_rows, len(agg)
+
+
+def load_map():
+    """Карта соответствия: числовой артикул API → внутренний SPR-….
+
+    Карта собирается скриптом карта-артикулов.py (по названиям товаров).
+    Если файла нет или карта не грузится — артикулы остаются числовыми.
+    """
+    try:
+        with open(MAP_PATH, encoding="utf-8") as file:
+            cards = json.load(file).get("соответствия", [])
+        translation = {}
+        for card in cards:
+            spr = card.get("spr")
+            nm = card.get("nm_id")
+            if spr and nm:
+                for article in card.get("wb_articles") or []:
+                    translation[str(article)] = spr
+        return translation
+    except Exception as exc:
+        log(f"! карта артикулов не прочитана ({exc}) — артикулы числовые")
+        return {}
+
+
+def write_csv(csv_rows, translation=None):
+    """Сводка по дням — файл, который читает дашборд кнопкой «⤓ CSV».
+
+    Числовые артикулы API переводятся во внутренние SPR-… по карте
+    (незамеченные остаются числовыми — честно, без выдумки).
+    """
+    for row in csv_rows:
+        article = row["Артикул"]
+        if translation:
+            row["Артикул"] = translation.get(str(article), article)
+    cols = ["Дата", "Артикул", "Заказы шт", "Продано шт", "Выручка ₽",
+            "Комиссия ₽", "Возвраты шт", "Реклама ₽", "Остатки шт",
+            "Себестоимость ₽/шт"]
+    with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.DictWriter(file, fieldnames=cols, delimiter=";")
+        writer.writeheader()
+        writer.writerows(csv_rows)
+
+
+def regenerate():
+    """Пересборка сводки CSV из локального файла — без запросов к API.
+
+    Нужно, когда карта артикулов обновилась или CSV потерялся: данные
+    уже лежат в продажи-api.jsonl, повторный поход в API не нужен.
+    """
+    state = load_state()
+    state["last_ok_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log("регенерация CSV из локального файла")
+    with open(JSONL_PATH, encoding="utf-8") as file:
+        rows = [json.loads(line) for line in file]
+    csv_rows, pairs = aggregate_csv_rows(rows)
+    write_csv(csv_rows, load_map())
+    log(f"готово (регенерация): строк {len(rows)}, "
+        f"пары день×артикул {pairs}")
+    print(f"CSV пересобран из локальных данных: пар день×артикул {pairs} "
+          f"→ {os.path.basename(CSV_PATH)}")
+
+
+def api_post(url, body, token):
+    """POST к WB API с автоповтором (та же логика, что в api_get)."""
+    payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    for attempt in range(MAX_ATTEMPTS):
+        request = urllib.request.Request(
+            url, data=payload,
+            headers={"Authorization": token,
+                     "Content-Type": "application/json",
+                     "Accept": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=60,
+                                        context=SSL_CTX) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            text = str(exc)
+            log(f"  попытка {attempt + 1}: {text}")
+            wait = (RETRY_PAUSES_429 if "429" in text
+                    else RETRY_PAUSES_OTHER)[attempt]
+            time.sleep(wait)
+    return None
+
+
+def fetch_stocks(token):
+    """Срез остатков seller-analytics → data-api/остатки-последние.json.
+
+    Возвращает {nmId: суммарное количество на складах}.
+    """
+    body = {"dateFrom": datetime.now().strftime("%Y-%m-%d"),
+            "dateTo": datetime.now().strftime("%Y-%m-%d")}
+    answer = api_post(ENDPOINT_STOCKS, body, token)
+    if answer is None:
+        return None
+    items = (answer.get("data") or {}).get("items") or []
+    by_nm = defaultdict(int)
+    for item in items:
+        by_nm[item.get("nmId")] += item.get("quantity") or 0
+    with open(STOCK_PATH, "w", encoding="utf-8") as file:
+        json.dump({"срез": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                   "остатки": dict(by_nm)}, file, ensure_ascii=False,
+                  indent=1)
+    return by_nm
+
+
+def fetch_reports(token):
+    """Финансовые отчёты реализации → data-api/отчёты-реализации.json.
+
+    Отчёты WB публикует понедельными кусочками с задержкой около
+    недели; каждый содержит ТОЧНЫЕ суммы (продано, к перечислению,
+    логистика, хранение, штрафы) — в отличие от упрощённой комиссии
+    из выгрузки продаж. Период: от первой строки локальной выгрузки
+    до сегодня, чтобы отчёты всегда покрывали весь интерес.
+    Не критично для основного прогона: не пришли — журнал и дальше.
+    """
+    earliest = ""
+    if os.path.isfile(JSONL_PATH):
+        with open(JSONL_PATH, encoding="utf-8") as file:
+            for line in file:
+                try:
+                    day = (json.loads(line).get("date") or "")[:10]
+                except Exception:
+                    continue
+                if day and (not earliest or day < earliest):
+                    earliest = day
+    date_from = earliest or (datetime.now().strftime("%Y-%m-%d"))
+    body = {"dateFrom": date_from,
+            "dateTo": datetime.now().strftime("%Y-%m-%d")}
+    answer = api_post(ENDPOINT_REPORTS, body, token)
+    if answer is None:
+        log("! отчёты реализации не получены (попытки исчерпаны)")
+        return None
+    with open(REPORTS_PATH, "w", encoding="utf-8") as file:
+        json.dump({"срез": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                   "период": f"{date_from}…{body['dateTo']}",
+                   "отчёты": answer}, file, ensure_ascii=False, indent=1)
+    log(f"отчёты реализации: {len(answer)} шт за {date_from}…{body['dateTo']}")
+    return len(answer)
+
+
+CARDS_TTL_DAYS = 7.0    # карточки меняются редко — кэш на неделю
+
+
+def fetch_cards(token):
+    """Предметы карточек (nmId → предмет) → data-api/карточки.json.
+
+    Дашборд строит из этого группы для иерархии «тип → товар»:
+    колонки «тип» в выгрузке продаж нет. Свежий файл (младше недели)
+    обрабатывается без запроса к WB. Возвращает словарь или None.
+    """
+    cards_path = os.path.join(DATA_DIR, "карточки.json")
+    if os.path.isfile(cards_path):
+        age_days = (time.time() - os.path.getmtime(cards_path)) / 86400
+        if age_days < CARDS_TTL_DAYS:
+            return None                       # свежий кэш — WB не дёргаем
+    subjects = {}
+    nxt = None
+    for _ in range(50):                       # страниц не больше
+        cursor = {"limit": 100}
+        if nxt:
+            cursor["next"] = nxt
+        settings = {"cursor": cursor}
+        if not nxt:
+            settings["filter"] = {"deleted": 0, "withPhoto": 0}
+        answer = api_post(ENDPOINT_CARDS, {"settings": settings}, token)
+        if answer is None:
+            log("! карточки: попытки исчерпаны — предметы не обновлены")
+            return None
+        block = answer.get("data") or {}
+        for card in block.get("cards") or []:
+            if card.get("subjectName"):
+                subjects[str(card.get("nmID"))] = card["subjectName"]
+        nxt = (block.get("cursor") or {}).get("next")
+        if not nxt:
+            break
+    with open(cards_path, "w", encoding="utf-8") as file:
+        json.dump({"срез": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                   "предметы": subjects}, file, ensure_ascii=False, indent=1)
+    log(f"карточки: предметов {len(subjects)} → карточки.json")
+    return subjects
+
+
+def fetch_delta(token, state):
+    """Продажи и заказы с метки lastChangeDate. Возвращает True при успехе."""
+    params = {"dateFrom": state["last_change"]}
+    sales_rows = api_get(ENDPOINT_SALES, params, token)
+    if sales_rows is None:
+        log("! продажи: попытки исчерпаны — выгрузка не состоялась")
+        return False
+    # заказы нужны для «Заказы шт» и выкупа; их метка своя, берём с запасом
+    orders_rows = api_get(ENDPOINT_ORDERS, params, token)
+    if orders_rows is None:
+        orders_rows = []
+
+    seen = read_existing_keys()
+    added_sales = write_jsonl(sales_rows, seen)
+    added_orders = write_jsonl(orders_rows, seen)
+    new_max = state["last_change"]
+    for row in sales_rows + orders_rows:
+        change = row.get("lastChangeDate")
+        if change and change > new_max:
+            new_max = change
+    state["last_change"] = new_max
+    state["last_ok_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_state(state)
+    log(f"продажи +{added_sales}, заказы +{added_orders} "
+        f"(метка до {new_max})")
+    return added_sales, added_orders
+
+
+def main():
+    """Проверка метки дня → выгрузка → сводка CSV → остатки.
+
+    Флаг --регенерация: пересобрать только CSV из локальных данных
+    (без API) — после обновления карты артикулов.
+    Флаг --история: разовая дозагрузка старых продаж — метку lastChange
+    откатить к 2026-06-01 (выгрузка, начатая с 01.09, пропустила
+    июль-август: их продажи уже не менялись после 01.09). Дедупликация
+    по srid не даст записать уже имеющиеся строки заново.
+    """
+    if "--регенерация" in sys.argv:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        regenerate()
+        return
+    state = load_state()
+    if "--история" in sys.argv:
+        state["last_change"] = "2026-06-01T00:00:00"
+        state["last_ok_date"] = ""
+        log("дозагрузка истории: метка откатана к 2026-06-01")
+        print("Дозагрузка истории (с 2026-06-01) — может идти минуты")
+    today = datetime.now().strftime("%Y-%m-%d")
+    if state.get("last_ok_date", "").startswith(today):
+        print("Сегодня уже выгружалось — тихий выход "
+              f"(последний прогон {state['last_ok_date']})")
+        return
+
+    token = load_token()
+    if not token:
+        log("! ключ WB_API_KEY не найден в .env")
+        print("Не найден ключ WB_API_KEY в .env рядом с проектом",
+              file=sys.stderr)
+        sys.exit(1)
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    started = datetime.now()
+    log("прогон начат")
+    mark_old_rows()
+
+    added = fetch_delta(token, state)
+    if not added:
+        log("! выгрузка не состоялась (API не ответил после попыток)")
+        print("Выгрузка не удалась — детали в журнал-выгрузки.txt",
+              file=sys.stderr)
+        sys.exit(2)
+
+    with open(JSONL_PATH, encoding="utf-8") as file:
+        rows = [json.loads(line) for line in file]
+    stock_ok = fetch_stocks(token)
+    reports_n = fetch_reports(token)
+    cards_subj = fetch_cards(token)
+
+    csv_rows, pairs = aggregate_csv_rows(rows)
+    write_csv(csv_rows, load_map())
+    log(f"готово: строк {len(rows)}, сводка пар день×артикул {pairs}, "
+        f"остатки {'ок' if stock_ok is not None else 'НЕ ок'}, "
+        f"отчёты {'ок' if reports_n is not None else 'НЕ ок'}, "
+        f"карточки {'ок' if cards_subj is not None else 'кэш/НЕ ок'} "
+        f"за {int((datetime.now() - started).total_seconds())} с")
+
+    print(f"Выгрузка готова: {len(rows)} строк продаж/заказов, "
+          f"пары день×артикул {pairs}; CSV: {os.path.basename(CSV_PATH)}; "
+          f"остатки: {'ок' if stock_ok is not None else 'не получены'}; "
+          f"отчёты реализации: "
+          f"{'ок' if reports_n is not None else 'не получены'}; "
+          f"карточки: "
+          f"{'ок' if cards_subj is not None else 'кэш свежий/нет'}")
+
+
+if __name__ == "__main__":
+    main()

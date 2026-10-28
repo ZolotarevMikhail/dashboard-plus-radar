@@ -462,6 +462,7 @@ small.tag-demo{font-size:10.5px;color:var(--ink-3);background:rgba(21,21,21,.05)
   <div class="card-head">
     <h2>Товары</h2>
     <span class="muted" style="font-size:12px;margin-left:8px;display:inline-flex;align-items:center;gap:5px;background:rgba(251,207,2,.14);padding:3px 9px;border-radius:4px;color:var(--ink-1)"><span style="color:var(--accent)">✎</span> Себестоимость вводится в колонке «Себест.» и сохраняется в браузере</span>
+    <span class="muted" style="font-size:11.5px;margin-left:8px">GMROI и «Оборот, дн» появляются с себестоимостью и считаются от текущего среза остатков (среднее за период дало бы историю остатков, её в выгрузке нет)</span>
   </div>
   <div class="tbl-scroll">
     <table id="goodsTable">
@@ -1254,34 +1255,63 @@ function renderPie(){
 }
 
 /* ---------- Таблица товаров ---------- */
+/* GMROI и дни запаса: считаются от текущего СРЕЗА остатков (истории остатков в выгрузке нет — оговорка в шапке таблицы) */
+function stockMetrics(r, cost, days){
+  const cogsSold=cost*r.qty;
+  const gross=r.revenue-r.commission-r.adSpend-cogsSold; // валовая прибыль по методике GMROI
+  const stockCogs=(r.stock||0)*cost;                     // запас по себестоимости, срез
+  const gmroi=stockCogs>0?gross/stockCogs:null;
+  const perDay=days>0?r.qty/days:0;
+  const daysCover=perDay>0?(r.stock||0)/perDay:null;     // «дней запаса хватит» на срезе
+  const tier=gmroi==null?'':gmroi<1?'bad':gmroi<2?'':'good'; // <1 стоп, 1–2 работа, >2 сильная
+  return {gross,stockCogs,gmroi,daysCover,tier};
+}
+
 function renderTable(){
   const {from,to}=periodRange();
+  const days=Math.max(1,Math.round((to-from)/86400000)+1);
   const rows=aggPeriod(from,to).sort((a,b)=>b.revenue-a.revenue);
-  const head=['Товар','Продано','Выручка','Комиссия WB','Реклама','Себест./шт','Себест. всего','Прибыль','ROI','Остатки'];
-  // Классы скрытия колонок на узких экранах: 920 → комиссия/реклама/себест.всего/ROI, 768 → ещё часть, 560 → минимум
-  const colCls=['','num','num','num tbl-hide-768','num tbl-hide-920','num tbl-hide-560','num tbl-hide-768','num','num tbl-hide-768','num'];
+  const costOf=r=>{ const c=state.costs[r.article]!=null?state.costs[r.article]:findDemoCost(r.article); return c>0?c:0; };
+  const anyCost=rows.some(r=>costOf(r)>0);
+  // Колонки GMROI/«Оборот, дн» появляются только при введённой себестоимости (честно: без неё их не посчитать)
+  const head=['Товар','Продано','Выручка','Комиссия WB','Реклама','Себест./шт','Себест. всего','Прибыль','ROI'];
+  const colCls=['','num','num','num tbl-hide-768','num tbl-hide-920','num tbl-hide-560','num tbl-hide-768','num','num tbl-hide-768'];
+  if(anyCost){ head.push('Оборот, дн','GMROI'); colCls.push('num tbl-hide-920','num tbl-hide-920'); }
+  head.push('Остатки'); colCls.push('num');
   $('#goodsHead').innerHTML='<tr>'+head.map((h,i)=>`<th class="${colCls[i]}">${h}</th>`).join('')+'</tr>';
   const body=rows.map(r=>{
-    const cost=state.costs[r.article]!=null?state.costs[r.article]:findDemoCost(r.article);
+    const cost=costOf(r);
     const cogs=cost*r.qty;
     const profit=r.revenue-r.commission-r.adSpend-cogs;
     const roi=r.adSpend>0?(r.revenue/r.adSpend):null;
     const roiCls=roi==null?'':roi<10?'bad':roi<13?'warn':'good';
     const low=r.stock<20;
-    return `<tr>
-      <td><b>${r.article}</b> <span class="muted">${r.name}</span></td>
-      <td class="num">${fmtN(r.qty)}</td>
-      <td class="num">${fmtR(r.revenue)}</td>
-      <td class="num tbl-hide-768">${fmtR(r.commission)}</td>
-      <td class="num tbl-hide-920">${fmtR(r.adSpend)}</td>
-      <td class="num tbl-hide-560"><input class="cost" data-art="${r.article}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>
-      <td class="num tbl-hide-768">${fmtR(cogs)}</td>
-      <td class="num ${profit>=0?'profit-pos':'profit-neg'}">${fmtR(profit)}</td>
-      <td class="num tbl-hide-768">${roi!=null?`<span class="roi-pill ${roiCls}">${roi.toFixed(2)}×</span>`:'—'}</td>
-      <td class="num ${low?'stock-low':''}">${fmtN(r.stock)}</td>
-    </tr>`;
+    const m=anyCost&&cost>0?stockMetrics(r,cost,days):null;
+    const cells=[
+      `<td><b>${r.article}</b> <span class="muted">${r.name}</span></td>`,
+      `<td class="num">${fmtN(r.qty)}</td>`,
+      `<td class="num">${fmtR(r.revenue)}</td>`,
+      `<td class="num tbl-hide-768">${fmtR(r.commission)}</td>`,
+      `<td class="num tbl-hide-920">${fmtR(r.adSpend)}</td>`,
+      `<td class="num tbl-hide-560"><input class="cost" data-art="${r.article}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>`,
+      `<td class="num tbl-hide-768">${fmtR(cogs)}</td>`,
+      `<td class="num ${profit>=0?'profit-pos':'profit-neg'}">${fmtR(profit)}</td>`,
+      `<td class="num tbl-hide-768">${roi!=null?`<span class="roi-pill ${roiCls}">${roi.toFixed(2)}×</span>`:'—'}</td>`
+    ];
+    if(anyCost){
+      cells.push(
+        `<td class="num tbl-hide-920">${
+          m&&m.daysCover!=null
+            ?(m.daysCover>60?`<span class="roi-pill warn">${m.daysCover.toFixed(0)}</span>`:m.daysCover.toFixed(0))
+            :'—'
+        }</td>`,
+        `<td class="num tbl-hide-920">${m&&m.gmroi!=null?`<span class="roi-pill ${m.tier}">${m.gmroi.toFixed(2)}</span>`:'—'}</td>`
+      );
+    }
+    cells.push(`<td class="num ${low?'stock-low':''}">${fmtN(r.stock)}</td>`);
+    return `<tr>${cells.join('')}</tr>`;
   }).join('');
-  $('#goodsBody').innerHTML=body||'<tr><td colspan="10" class="empty">Нет данных за период</td></tr>';
+  $('#goodsBody').innerHTML=body||`<tr><td colspan="${head.length}" class="empty">Нет данных за период</td></tr>`;
   // обработчики ввода себестоимости
   $('#goodsBody').querySelectorAll('input.cost').forEach(inp=>{
     inp.addEventListener('change',()=>{

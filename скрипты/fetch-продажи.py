@@ -67,8 +67,8 @@ AD_DAILY_PATH = os.path.join(DATA_DIR, "реклама-по-дням.json")
 AD_TTL_HOURS = 20.0    # рекламные расходы не переписываются задним числом
 FULLSTATS_MAX_IDS = 50       # ограничение WB на запрос fullstats
 FULLSTATS_MAX_DAYS = 31      # ограничение WB на диапазон fullstats
-AD_REQUEST_HARD_LIMIT = 120  # будильник: соединение WB может «капать»
-                             # байтами и подвешивать сокет (было 29.10)
+# будильник на запрос: соединение WB может «капать» байтами (было 29.10)
+AD_REQUEST_HARD_LIMIT = 120
 AD_HARD_RETRIES = 2  # повтор при зависании, потом пачка сдана
 
 

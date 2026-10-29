@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Ежедневная выгрузка продаж по WB API (этап 4).
+"""Ежедневная выгрузка продаж Sproots по WB API (этап 4).
 
 Схема работы:
   1) Ключ API берётся из .env рядом с проектом (WB_API_KEY) — в коде,
@@ -23,6 +23,7 @@
 import csv
 import json
 import os
+import signal
 import ssl
 import sys
 import time
@@ -30,7 +31,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJ, "data-api")
@@ -55,6 +56,27 @@ ENDPOINT_STOCKS = ANALYTICS_DOMAIN + "/api/analytics/v1/stocks-report/wb-warehou
 # «deprecated»; замена finance (POST, найдена через каталог MCP).
 ENDPOINT_REPORTS = "https://finance-api.wildberries.ru" \
                    "/api/finance/v1/sales-reports/list"
+# реклама: Спрутс — отдельный сервис WB, ключ тот же (проверено
+# 29.10.2026: списком кампаний отвечает 200). Движок fullstats: ≤50
+# кампаний и ≤31 день на запрос; в старом POST /adv/v2/fullstats — 404.
+ADVERT_DOMAIN = "https://advert-api.wildberries.ru"
+ENDPOINT_ADVERTS = ADVERT_DOMAIN + "/api/advert/v2/adverts"
+ENDPOINT_FULLSTATS = ADVERT_DOMAIN + "/adv/v3/fullstats"
+AD_PATH = os.path.join(DATA_DIR, "реклама-выгрузка.json")
+AD_DAILY_PATH = os.path.join(DATA_DIR, "реклама-по-дням.json")
+AD_TTL_HOURS = 20.0    # рекламные расходы не переписываются задним числом
+FULLSTATS_MAX_IDS = 50       # ограничение WB на запрос fullstats
+FULLSTATS_MAX_DAYS = 31      # ограничение WB на диапазон fullstats
+AD_REQUEST_HARD_LIMIT = 120  # будильник: соединение WB может «капать»
+                             # байтами и подвешивать сокет (было 29.10)
+AD_HARD_RETRIES = 2  # повтор при зависании, потом пачка сдана
+
+
+def _ad_stall_handler(signum, frame):
+    """Сброс зависшего соединения: urlopen-таймаут ловит не всё."""
+    raise TimeoutError("нет ответа WB за AD_REQUEST_HARD_LIMIT с")
+
+
 # карточки (предмет/категория каждой позиции) — источник групп
 # иерархии «тип → товар» в дашборде
 ENDPOINT_CARDS = "https://content-api.wildberries.ru/content/v2/get/cards/list"
@@ -205,7 +227,7 @@ def mark_old_rows():
             file.write(line + "\n")
 
 
-def aggregate_csv_rows(sales_rows):
+def aggregate_csv_rows(sales_rows, ad_daily=None):
     """Сводка по дням и артикулам в колонках бухгалтерского CSV.
 
     Правила (по документации WB):
@@ -215,13 +237,20 @@ def aggregate_csv_rows(sales_rows):
       - комиссия = priceWithDisc − forPay — упрощённая оценка (WB сам
         пишет расхождения с точным отчётом реализации); сверится в
         двойной трассе с бухгалтерией;
-      - реклама API продавца не отдаёт — колонка пустая.
+      - реклама — из API Спрутс (fetch_ads, файл «реклама-по-дням.json»):
+        расход точно по nmId, приписывается артикулу, который у этого
+        nmId виден в продажах; в дни без продаж по рекламируемому
+        товару добавляется отдельная строка (расход без выручки).
     Строка без метки «_t» считается продажей (старый формат файла).
     """
     agg = defaultdict(lambda: defaultdict(float))
+    nm_to_article = {}
     for row in sales_rows:
-        day = (row.get("date") or "")[:10]
+        nm_key = str(row.get("nmId") or "")
         article = row.get("supplierArticle", "")
+        if nm_key and article and nm_key not in nm_to_article:
+            nm_to_article[nm_key] = article
+        day = (row.get("date") or "")[:10]
         is_return = (row.get("saleID") or "").startswith("R")
         bucket = agg[(day, article)]
         if row.get("_t") == "O":
@@ -235,8 +264,16 @@ def aggregate_csv_rows(sales_rows):
             bucket["revenue"] += row.get("finishedPrice") or 0
             bucket["commission"] += (
                 (row.get("priceWithDisc") or 0) - (row.get("forPay") or 0))
+    if ad_daily:
+        for day, per_nm in sorted(ad_daily.items()):
+            if not day:
+                continue
+            for nm_key, spend in per_nm.items():
+                article = nm_to_article.get(nm_key, nm_key)
+                agg[(day, article)]["ad"] += spend
     csv_rows = []
     for (day, article), numbers in sorted(agg.items()):
+        has_ad = "ad" in numbers
         csv_rows.append({
             "Дата": day, "Артикул": article,
             "Заказы шт": int(numbers["orders"]) or "",
@@ -244,16 +281,19 @@ def aggregate_csv_rows(sales_rows):
             "Выручка ₽": round(numbers["revenue"]),
             "Комиссия ₽": round(numbers["commission"]),
             "Возвраты шт": int(numbers["returns"]) or "",
-            "Реклама ₽": "", "Остатки шт": "",
+            "Реклама ₽": round(numbers["ad"]) if has_ad else "",
+            "Остатки шт": "",
             "Себестоимость ₽/шт": "",
         })
     return csv_rows, len(agg)
 
 
 def load_map():
-    """Карта соответствия: числовой артикул API → внутренний SPR-….
+    """Карта соответствия: числовой артикул API / nmId → внутренний SPR-….
 
     Карта собирается скриптом карта-артикулов.py (по названиям товаров).
+    Ключами служат и артикулы WB (wb_articles), и nmId — рекламные
+    расходы приходят от Спрутс именно по nmId, к тому же артикулу.
     Если файла нет или карта не грузится — артикулы остаются числовыми.
     """
     try:
@@ -262,9 +302,12 @@ def load_map():
         translation = {}
         for card in cards:
             spr = card.get("spr")
-            nm = card.get("nm_id")
-            if spr and nm:
-                for article in card.get("wb_articles") or []:
+            if not spr:
+                continue
+            targets = [card.get("nm_id")]
+            targets += card.get("wb_articles") or []
+            for article in targets:
+                if article:
                     translation[str(article)] = spr
         return translation
     except Exception as exc:
@@ -302,7 +345,7 @@ def regenerate():
     log("регенерация CSV из локального файла")
     with open(JSONL_PATH, encoding="utf-8") as file:
         rows = [json.loads(line) for line in file]
-    csv_rows, pairs = aggregate_csv_rows(rows)
+    csv_rows, pairs = aggregate_csv_rows(rows, load_ad_daily())
     write_csv(csv_rows, load_map())
     log(f"готово (регенерация): строк {len(rows)}, "
         f"пары день×артикул {pairs}")
@@ -363,17 +406,7 @@ def fetch_reports(token):
     до сегодня, чтобы отчёты всегда покрывали весь интерес.
     Не критично для основного прогона: не пришли — журнал и дальше.
     """
-    earliest = ""
-    if os.path.isfile(JSONL_PATH):
-        with open(JSONL_PATH, encoding="utf-8") as file:
-            for line in file:
-                try:
-                    day = (json.loads(line).get("date") or "")[:10]
-                except Exception:
-                    continue
-                if day and (not earliest or day < earliest):
-                    earliest = day
-    date_from = earliest or (datetime.now().strftime("%Y-%m-%d"))
+    date_from = earliest_sale_day() or datetime.now().strftime("%Y-%m-%d")
     body = {"dateFrom": date_from,
             "dateTo": datetime.now().strftime("%Y-%m-%d")}
     answer = api_post(ENDPOINT_REPORTS, body, token)
@@ -389,6 +422,254 @@ def fetch_reports(token):
 
 
 CARDS_TTL_DAYS = 7.0    # карточки меняются редко — кэш на неделю
+
+
+def earliest_sale_day():
+    """Самая ранняя дата локальной выгрузки («откуда данные начинаются»)."""
+    earliest = ""
+    if os.path.isfile(JSONL_PATH):
+        with open(JSONL_PATH, encoding="utf-8") as file:
+            for line in file:
+                try:
+                    day = (json.loads(line).get("date") or "")[:10]
+                except Exception:
+                    continue
+                if day and (not earliest or day < earliest):
+                    earliest = day
+    return earliest
+
+
+def ad_windows(begin, end):
+    """Отрезки ≤ FULLSTATS_MAX_DAYS между begin и end (включительно)."""
+    windows = []
+    point = datetime.fromisoformat(begin)
+    last = datetime.fromisoformat(end)
+    while point <= last:
+        piece = point + timedelta(days=FULLSTATS_MAX_DAYS - 1)
+        if piece > last:
+            piece = last
+        windows.append((point.strftime("%Y-%m-%d"),
+                        piece.strftime("%Y-%m-%d")))
+        point = piece + timedelta(days=1)
+    return windows
+
+
+def ad_fullstats(token, ids_csv, begin, end):
+    """Статистика кампаний fullstats за окно. Возвращает (ок, тело).
+
+    ok False — сеть/исчерпаны попытки; тело None — WB вернул пустой
+    ответ «null» (так отдаёт пачку, у которой нет данных за период).
+    Частота жёсткая: соблюдаем заголовок X-RateLimit-Retry.
+    """
+    params = {"ids": ids_csv, "beginDate": begin, "endDate": end}
+    query = "&".join(f"{key}={urllib.parse.quote(str(value))}"
+                     for key, value in params.items())
+    url = ENDPOINT_FULLSTATS + "?" + query
+    hangs = 0
+    for attempt in range(MAX_ATTEMPTS):
+        request = urllib.request.Request(
+            url, headers={"Authorization": token,
+                          "Accept": "application/json"})
+        try:
+            old_handler = signal.signal(signal.SIGALRM, _ad_stall_handler)
+            signal.alarm(AD_REQUEST_HARD_LIMIT)
+            try:
+                with urllib.request.urlopen(request, timeout=60,
+                                            context=SSL_CTX) as response:
+                    return True, json.loads(response.read().decode("utf-8"))
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                wait = exc.headers.get("X-RateLimit-Retry")
+                log(f"  реклама 429: пауза {wait or 60} с")
+                time.sleep(min(int(wait) if wait else 60, 300))
+                continue
+            log(f"  реклама: ответ {exc.code} — пропускаю пачку")
+            time.sleep(RETRY_PAUSES_OTHER[attempt])
+        except TimeoutError as exc:
+            hangs += 1
+            if hangs >= AD_HARD_RETRIES:
+                log(f"  реклама: соединение зависло дважды — пачка сдана "
+                    f"({exc}); продолжится в следующий прогон")
+                return False, None
+            log(f"  реклама: зависание сброшено ({exc}), повтор")
+            time.sleep(RETRY_PAUSES_OTHER[attempt])
+        except Exception as exc:
+            log(f"  реклама: {exc}")
+            time.sleep(RETRY_PAUSES_OTHER[attempt])
+    return False, None
+
+
+def ad_has_raw_entry(raw, ids, begin, end):
+    """Есть ли в сырых окнах уже готовый ответ по этим кампаниям/дню."""
+    for entry in raw:
+        if (entry.get("beginDate") == begin and entry.get("endDate") == end
+                and sorted(entry.get("ids") or []) == sorted(ids)):
+            return True
+    return False
+
+
+def load_ad_raw():
+    """Сырые окна рекламы из файла (для продолжения прерванного прогона)."""
+    try:
+        with open(AD_PATH, encoding="utf-8") as file:
+            return json.load(file).get("окна") or []
+    except Exception:
+        return []
+
+
+def save_ad_raw(raw):
+    """Сырые окна → файл после КАЖДОГО запроса (програны продолжаемы)."""
+    with open(AD_PATH, "w", encoding="utf-8") as file:
+        json.dump({"срез": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                   "окна": raw}, file, ensure_ascii=False, indent=1)
+
+
+def ad_group_stats(token, ids, begin, end, raw):
+    """Статистика пачки; на пустой пачке — одиночные запросы.
+
+    Проверено 29.10.2026 живьём: WB отдаёт «null» на пачку из ≥2
+    кампаний даже там, где у одиночек данные есть, — поэтому пачка
+    дробится сразу до одиночных запросов. Каждый полученный ответ
+    сразу в файл (raw) — прерванный прогон продолжается.
+    Возвращает True, если пачка обработана (с данными или без).
+    """
+    if ad_has_raw_entry(raw, ids, begin, end):
+        return True
+    ok, body = ad_fullstats(token, ",".join(str(i) for i in ids), begin, end)
+    if not ok:
+        log(f"! реклама {begin}…{end}: пачка не получена (сеть)")
+        return False
+    if body is None:
+        if len(ids) == 1:
+            return True                     # честный «нет данных»
+        log(f"  реклама: пачка {len(ids)} пустая — запросы по одиночным")
+        for one in ids:
+            if not ad_group_stats(token, [one], begin, end, raw):
+                return False
+        return True
+    raw.append({"ids": list(ids), "beginDate": begin, "endDate": end,
+                "кампании": body})
+    save_ad_raw(raw)
+    return True
+
+
+def load_ad_daily():
+    """Сводка рекламы по дням из файла → {дата: {nmId: расход ₽}}."""
+    try:
+        with open(AD_DAILY_PATH, encoding="utf-8") as file:
+            return json.load(file).get("по дням") or {}
+    except Exception as exc:
+        log(f"! реклама: файл по дням не прочитан ({exc})")
+        return None
+
+
+def ad_daily_from_raw(windows):
+    """Сводка расхода по дням и товарам из сырых ответов fullstats.
+
+    Расход = поле sum внутри apps[].nms[] (рубли, проверено 29.10:
+    совпадает с clicks × cpc). Периодические строки без nms считаются
+    по остатку дня поровну на карточки кампании (с пометкой в журнале).
+    """
+    daily = defaultdict(lambda: defaultdict(float))
+    special = 0
+    for window in windows:
+        for camp in window.get("кампании") or []:
+            campaign_nms = set()
+            for day in camp.get("days") or []:
+                date = (day.get("date") or "")[:10]
+                day_total = day.get("sum") or 0
+                app_sum = 0.0
+                for app in day.get("apps") or []:
+                    nms_list = app.get("nms") or []
+                    if not nms_list:
+                        continue
+                    app_sum += app.get("sum") or 0
+                    for nm in nms_list:
+                        nm_id = str(nm.get("nmId") or "")
+                        if nm_id and nm_id not in campaign_nms:
+                            campaign_nms.add(nm_id)
+                        if nm_id:
+                            daily[date][nm_id] += nm.get("sum") or 0
+                missing = day_total - app_sum
+                if missing > 0.01 and campaign_nms:
+                    special += 1
+                    share = missing / len(campaign_nms)
+                    for nm_id in campaign_nms:
+                        daily[date][nm_id] += share
+    if special:
+        log(f"реклама: дней с неразложенным остатком расхода: {special} "
+            f"(разложен поровну на карточки кампаний)")
+    return daily
+
+
+def ids_active_in_period(campaigns, earliest, today):
+    """ID кампаний, живших в периоде earliest…today (по меткам WB)."""
+    live_ids = []
+    for campaign in campaigns:
+        stamps = campaign.get("timestamps") or {}
+        started = (stamps.get("started") or "")[:10]
+        deleted = (stamps.get("deleted") or "")[:10]
+        if not started or started > today:
+            continue
+        # «2100-01-01» — признак живой кампании (не удалённой)
+        if deleted and deleted != "2100-01-01" and deleted < earliest:
+            continue
+        live_ids.append(campaign.get("id"))
+    return live_ids
+
+
+def fetch_ads(token):
+    """Расходы на рекламу Спрутс в data-api («реклама-выгрузка.json»).
+
+    Ключ тот же (проверено 29.10.2026); fullstats по окнам ≤31 день,
+    пачки дробятся до одиночек (multi-id WB отдаёт null). Сырой ответ
+    пишется после каждого запроса — прерванный прогон продолжается.
+    Итог по дням → «реклама-по-дням.json»; свежий файл (младше
+    AD_TTL_HOURS) обрабатывается без запросов к WB.
+    Возвращает {дата: {nmIdString: расход ₽}} или None (не вышло).
+    """
+    fresh = load_ad_daily()
+    if fresh is not None and os.path.isfile(AD_DAILY_PATH):
+        age_hours = (time.time() - os.path.getmtime(AD_DAILY_PATH)) / 3600
+        if age_hours < AD_TTL_HOURS:
+            log(f"реклама свежая ({age_hours:.1f} ч) — без запросов")
+            return fresh
+    earliest = earliest_sale_day()
+    if not earliest:
+        log("! реклама: локальных продаж нет — период не определён")
+        return None
+    today = datetime.now().strftime("%Y-%m-%d")
+    answer = api_get(ENDPOINT_ADVERTS, {"limit": 200}, token)
+    if answer is None:
+        log("! реклама: список кампаний не получен")
+        return None
+    campaigns = (answer.get("adverts") if isinstance(answer, dict)
+                 else answer) or []
+    live_ids = ids_active_in_period(campaigns, earliest, today)
+    if not live_ids:
+        log("реклама: активных в периоде кампаний нет — расход пустой")
+        return {}
+    log(f"реклама: живых кампаний {len(live_ids)}, окна {earliest}…{today}")
+    raw = load_ad_raw()
+    for begin, end in ad_windows(earliest, today):
+        for i in range(0, len(live_ids), FULLSTATS_MAX_IDS):
+            piece = live_ids[i:i + FULLSTATS_MAX_IDS]
+            if not ad_group_stats(token, piece, begin, end, raw):
+                log(f"! реклама: окно {begin}…{end} неполное — "
+                    f"данные частичные, продолжится в следующий прогон")
+    daily = ad_daily_from_raw(raw)
+    with open(AD_DAILY_PATH, "w", encoding="utf-8") as file:
+        json.dump({"срез": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                   "период": f"{earliest}…{today}",
+                   "по дням": daily}, file, ensure_ascii=False, indent=1)
+    total_sum = sum(sum(per_nm.values()) for per_nm in daily.values())
+    log(f"реклама: окон {len(raw)}, расход за период {total_sum:.2f} ₽")
+    print(f"Реклама получена: окон {len(raw)}, расход {total_sum:.0f} ₽ "
+          f"за {earliest}…{today}")
+    return daily
 
 
 def fetch_cards(token):
@@ -463,6 +744,8 @@ def main():
 
     Флаг --регенерация: пересобрать только CSV из локальных данных
     (без API) — после обновления карты артикулов.
+    Флаг --реклама: только догрузить рекламу Спрутс и пересобрать CSV
+    (продажи не трогаем; работает даже если сегодня уже выгружалось).
     Флаг --история: разовая дозагрузка старых продаж — метку lastChange
     откатить к 2026-06-01 (выгрузка, начатая с 01.09, пропустила
     июль-август: их продажи уже не менялись после 01.09). Дедупликация
@@ -471,6 +754,20 @@ def main():
     if "--регенерация" in sys.argv:
         os.makedirs(DATA_DIR, exist_ok=True)
         regenerate()
+        return
+    if "--реклама" in sys.argv:
+        token = load_token()
+        if not token:
+            log("! ключ WB_API_KEY не найден в .env")
+            print("Не найден ключ WB_API_KEY в .env", file=sys.stderr)
+            sys.exit(1)
+        ad_daily = fetch_ads(token)
+        if ad_daily is not None:
+            with open(JSONL_PATH, encoding="utf-8") as file:
+                rows = [json.loads(line) for line in file]
+            csv_rows, pairs = aggregate_csv_rows(rows, ad_daily)
+            write_csv(csv_rows, load_map())
+            print(f"CSV пересобран с рекламой: пар день×артикул {pairs}")
         return
     state = load_state()
     if "--история" in sys.argv:
@@ -508,13 +805,15 @@ def main():
     stock_ok = fetch_stocks(token)
     reports_n = fetch_reports(token)
     cards_subj = fetch_cards(token)
+    ad_daily = fetch_ads(token)
 
-    csv_rows, pairs = aggregate_csv_rows(rows)
+    csv_rows, pairs = aggregate_csv_rows(rows, ad_daily)
     write_csv(csv_rows, load_map())
     log(f"готово: строк {len(rows)}, сводка пар день×артикул {pairs}, "
         f"остатки {'ок' if stock_ok is not None else 'НЕ ок'}, "
         f"отчёты {'ок' if reports_n is not None else 'НЕ ок'}, "
-        f"карточки {'ок' if cards_subj is not None else 'кэш/НЕ ок'} "
+        f"карточки {'ок' if cards_subj is not None else 'кэш/НЕ ок'}, "
+        f"реклама {'ок' if ad_daily is not None else 'НЕ ок'} "
         f"за {int((datetime.now() - started).total_seconds())} с")
 
     print(f"Выгрузка готова: {len(rows)} строк продаж/заказов, "
@@ -523,7 +822,8 @@ def main():
           f"отчёты реализации: "
           f"{'ок' if reports_n is not None else 'не получены'}; "
           f"карточки: "
-          f"{'ок' if cards_subj is not None else 'кэш свежий/нет'}")
+          f"{'ок' if cards_subj is not None else 'кэш свежий/нет'}; "
+          f"реклама: {'ок' if ad_daily is not None else 'не получена'}")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ import os
 import signal
 import ssl
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -33,7 +34,11 @@ import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Проект-корень: в рабочей папке скрипт лежит в scripts/ (корень выше),
+# в пакете заказчику — рядом с дашбордом (корень = папка скрипта).
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJ = (os.path.dirname(_SCRIPT_DIR)
+        if os.path.basename(_SCRIPT_DIR) == "scripts" else _SCRIPT_DIR)
 DATA_DIR = os.path.join(PROJ, "data-api")
 ENV_PATH = os.path.join(PROJ, ".env")
 JSONL_PATH = os.path.join(DATA_DIR, "продажи-api.jsonl")
@@ -65,16 +70,37 @@ ENDPOINT_FULLSTATS = ADVERT_DOMAIN + "/adv/v3/fullstats"
 AD_PATH = os.path.join(DATA_DIR, "реклама-выгрузка.json")
 AD_DAILY_PATH = os.path.join(DATA_DIR, "реклама-по-дням.json")
 AD_TTL_HOURS = 20.0    # рекламные расходы не переписываются задним числом
+# неполная выгрузка (был сбой сети) живёт куда меньше: её надо добирать
+AD_TTL_INCOMPLETE_HOURS = 2.0
 FULLSTATS_MAX_IDS = 50       # ограничение WB на запрос fullstats
 FULLSTATS_MAX_DAYS = 31      # ограничение WB на диапазон fullstats
-# будильник на запрос: соединение WB может «капать» байтами (было 29.10)
-AD_REQUEST_HARD_LIMIT = 120
+# будильник на любой запрос: соединение WB может «капать» байтами
+# (зависание 29.10) — urlopen-таймаут ловит не всё
+REQUEST_HARD_LIMIT = 120
 AD_HARD_RETRIES = 2  # повтор при зависании, потом пачка сдана
 
 
-def _ad_stall_handler(signum, frame):
+def _stall_handler(signum, frame):
     """Сброс зависшего соединения: urlopen-таймаут ловит не всё."""
-    raise TimeoutError("нет ответа WB за AD_REQUEST_HARD_LIMIT с")
+    raise TimeoutError(f"нет ответа WB за {REQUEST_HARD_LIMIT} с")
+
+
+class Сторож:
+    """Будильник вокруг запроса: срывает зависшее соединение TimeoutError.
+
+    Использовать внутри try: зависание обрабатывается как обычная
+    сетевая ошибка (автоповтор). Работает только в основном потоке —
+    скрипт однопоточный.
+    """
+
+    def __enter__(self):
+        self._old = signal.signal(signal.SIGALRM, _stall_handler)
+        signal.alarm(REQUEST_HARD_LIMIT)
+
+    def __exit__(self, exc_type, exc, tb):
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, self._old)
+        return False
 
 
 # карточки (предмет/категория каждой позиции) — источник групп
@@ -147,9 +173,9 @@ def api_get(url, params, token):
             url, headers={"Authorization": token,
                           "Accept": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=60,
-                                        context=SSL_CTX) as response:
-                return json.loads(response.read().decode("utf-8"))
+            with Сторож(), urllib.request.urlopen(request, timeout=60,
+                                                  context=SSL_CTX) as reply:
+                return json.loads(reply.read().decode("utf-8"))
         except Exception as exc:
             text = str(exc)
             log(f"  попытка {attempt + 1}: {text}")
@@ -168,8 +194,9 @@ def row_type(row):
     """
     if "isCancel" in row:
         return "O"
-    sale_id = row.get("saleID") or ""
-    return "S" if sale_id.startswith(("S", "R")) else "S"
+    # и «S…», и «R…» — строка продажи/возврата (они различаются дальше
+    # по префиксу saleID); метка нужна, чтобы отличить их от заказов
+    return "S"
 
 
 def write_jsonl(new_rows, seen_keys):
@@ -205,26 +232,65 @@ def read_existing_keys():
     return seen
 
 
+def read_jsonl_rows():
+    """Все строки файла продаж; оборванная строка пропускается с журналом.
+
+    Обрыв посреди записи (прогон убит) не должен валить все будущие
+    прогоны: битую строку пропускаем и помечаем в журнале. Потерянную
+    строку WB отдаёт снова, если откатить метку (флаг --история).
+    """
+    rows = []
+    bad = 0
+    with open(JSONL_PATH, encoding="utf-8") as file:
+        for line in file:
+            try:
+                rows.append(json.loads(line))
+            except Exception:
+                bad += 1
+    if bad:
+        log(f"! продажи-api.jsonl: оборванных строк {bad} — пропущено "
+            f"(вернуть потерю: --история)")
+    return rows
+
+
 def mark_old_rows():
     """Помечает тип строк файла, сохранённого до метки «_t» (один раз).
 
     Строки-продажи/возвраты имеют saleID, строки-заказы — isCancel.
+    Перезапись только если есть что пометить (каждый прогон файл не
+    трогаем), и атомарно: сперва файл-рядом, потом перемещение —
+    обрыв посреди записи не оставит файл полуразобранным.
     """
     if not os.path.isfile(JSONL_PATH):
         return
     with open(JSONL_PATH, encoding="utf-8") as file:
         lines = file.read().splitlines()
-    with open(JSONL_PATH, "w", encoding="utf-8") as file:
-        for line in lines:
-            try:
-                row = json.loads(line)
-                if "_t" not in row:
-                    row["_t"] = row_type(row)
-                    line = json.dumps(row, ensure_ascii=False,
-                                      separators=(",", ":"))
-            except Exception:
-                pass
-            file.write(line + "\n")
+    changed = False
+    new_lines = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+            if "_t" not in row:
+                row["_t"] = row_type(row)
+                new_lines.append(json.dumps(row, ensure_ascii=False,
+                                            separators=(",", ":")))
+                changed = True
+                continue
+        except Exception:
+            pass
+        new_lines.append(line)
+    if not changed:
+        return
+    handle, tmp_path = tempfile.mkstemp(
+        dir=os.path.dirname(JSONL_PATH), suffix=".tmp")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write("\n".join(new_lines) + "\n")
+        os.replace(tmp_path, JSONL_PATH)
+    except Exception:
+        if os.path.isfile(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 def aggregate_csv_rows(sales_rows, ad_daily=None):
@@ -269,8 +335,11 @@ def aggregate_csv_rows(sales_rows, ad_daily=None):
             if not day:
                 continue
             for nm_key, spend in per_nm.items():
-                article = nm_to_article.get(nm_key, nm_key)
-                agg[(day, article)]["ad"] += spend
+                # нулевой расход в день не создаёт строку: иначе в CSV
+                # появляются тысячи строк «Реклама ₽ = 0» (шум, было 1938)
+                if spend:
+                    article = nm_to_article.get(nm_key, nm_key)
+                    agg[(day, article)]["ad"] += spend
     csv_rows = []
     for (day, article), numbers in sorted(agg.items()):
         has_ad = "ad" in numbers
@@ -343,8 +412,7 @@ def regenerate():
     state = load_state()
     state["last_ok_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log("регенерация CSV из локального файла")
-    with open(JSONL_PATH, encoding="utf-8") as file:
-        rows = [json.loads(line) for line in file]
+    rows = read_jsonl_rows()
     csv_rows, pairs = aggregate_csv_rows(rows, load_ad_daily())
     write_csv(csv_rows, load_map())
     log(f"готово (регенерация): строк {len(rows)}, "
@@ -363,9 +431,9 @@ def api_post(url, body, token):
                      "Content-Type": "application/json",
                      "Accept": "application/json"}, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=60,
-                                        context=SSL_CTX) as response:
-                return json.loads(response.read().decode("utf-8"))
+            with Сторож(), urllib.request.urlopen(request, timeout=60,
+                                                  context=SSL_CTX) as reply:
+                return json.loads(reply.read().decode("utf-8"))
         except Exception as exc:
             text = str(exc)
             log(f"  попытка {attempt + 1}: {text}")
@@ -378,14 +446,21 @@ def api_post(url, body, token):
 def fetch_stocks(token):
     """Срез остатков seller-analytics → data-api/остатки-последние.json.
 
-    Возвращает {nmId: суммарное количество на складах}.
+    Возвращает {nmId: суммарное количество на складах}. Файл перезаписывается
+    только когда структура ответа знакома (data.items): неожиданный ответ
+    WB не должен затирать прежние остатки нулями.
     """
     body = {"dateFrom": datetime.now().strftime("%Y-%m-%d"),
             "dateTo": datetime.now().strftime("%Y-%m-%d")}
     answer = api_post(ENDPOINT_STOCKS, body, token)
     if answer is None:
         return None
-    items = (answer.get("data") or {}).get("items") or []
+    items = ((answer.get("data") or {}).get("items")
+             if isinstance(answer, dict) else None)
+    if items is None:
+        log("! остатки: незнакомая структура ответа — прежние остатки "
+            "сохранены, файл не перезаписан")
+        return None
     by_nm = defaultdict(int)
     for item in items:
         by_nm[item.get("nmId")] += item.get("quantity") or 0
@@ -471,20 +546,14 @@ def ad_fullstats(token, ids_csv, begin, end):
             url, headers={"Authorization": token,
                           "Accept": "application/json"})
         try:
-            old_handler = signal.signal(signal.SIGALRM, _ad_stall_handler)
-            signal.alarm(AD_REQUEST_HARD_LIMIT)
-            try:
-                with urllib.request.urlopen(request, timeout=60,
-                                            context=SSL_CTX) as response:
-                    return True, json.loads(response.read().decode("utf-8"))
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            with Сторож(), urllib.request.urlopen(request, timeout=60,
+                                                  context=SSL_CTX) as reply:
+                return True, json.loads(reply.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             if exc.code == 429:
-                wait = exc.headers.get("X-RateLimit-Retry")
-                log(f"  реклама 429: пауза {wait or 60} с")
-                time.sleep(min(int(wait) if wait else 60, 300))
+                wait = wait_seconds(exc.headers.get("X-RateLimit-Retry"))
+                log(f"  реклама 429: пауза {wait} с")
+                time.sleep(wait)
                 continue
             log(f"  реклама: ответ {exc.code} — пропускаю пачку")
             time.sleep(RETRY_PAUSES_OTHER[attempt])
@@ -500,6 +569,15 @@ def ad_fullstats(token, ids_csv, begin, end):
             log(f"  реклама: {exc}")
             time.sleep(RETRY_PAUSES_OTHER[attempt])
     return False, None
+
+
+def wait_seconds(value, fallback=60):
+    """Пауза из заголовка X-RateLimit-Retry: число или запасной вариант."""
+    try:
+        wait = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return min(wait, 300) if wait > 0 else fallback
 
 
 def ad_has_raw_entry(raw, ids, begin, end):
@@ -566,43 +644,74 @@ def load_ad_daily():
         return None
 
 
+def load_ad_incomplete():
+    """Список окон, которые в прошлый раз добрать не удалось."""
+    try:
+        with open(AD_DAILY_PATH, encoding="utf-8") as file:
+            return json.load(file).get("неполные окна") or []
+    except Exception:
+        return []
+
+
 def ad_daily_from_raw(windows):
     """Сводка расхода по дням и товарам из сырых ответов fullstats.
 
     Расход = поле sum внутри apps[].nms[] (рубли, проверено 29.10:
     совпадает с clicks × cpc). Периодические строки без nms считаются
     по остатку дня поровну на карточки кампании (с пометкой в журнале).
+    Состав кампаний меняется между прогонами (запустили/удалили) —
+    тогда на одно окно приходится несколько наборов ответов, и
+    простое суммирование задвоит расход. Поэтому каждое окно собираем
+    от свежих записей к старым, и кампания считается ОДНИМ ответом —
+    самым свежим, который её покрывает.
     """
     daily = defaultdict(lambda: defaultdict(float))
-    special = 0
+    by_window = defaultdict(list)
     for window in windows:
-        for camp in window.get("кампании") or []:
-            campaign_nms = set()
-            for day in camp.get("days") or []:
-                date = (day.get("date") or "")[:10]
-                day_total = day.get("sum") or 0
-                app_sum = 0.0
-                for app in day.get("apps") or []:
-                    nms_list = app.get("nms") or []
-                    if not nms_list:
-                        continue
-                    app_sum += app.get("sum") or 0
-                    for nm in nms_list:
-                        nm_id = str(nm.get("nmId") or "")
-                        if nm_id and nm_id not in campaign_nms:
-                            campaign_nms.add(nm_id)
-                        if nm_id:
-                            daily[date][nm_id] += nm.get("sum") or 0
-                missing = day_total - app_sum
-                if missing > 0.01 and campaign_nms:
-                    special += 1
-                    share = missing / len(campaign_nms)
-                    for nm_id in campaign_nms:
-                        daily[date][nm_id] += share
+        key = (window.get("beginDate"), window.get("endDate"))
+        by_window[key].append(window)
+    special = 0
+    for (begin, end), group in sorted(by_window.items()):
+        covered = set()
+        for window in reversed(group):        # свежие записи — в конце файла
+            ids = set(window.get("ids") or [])
+            if not ids or ids & covered:
+                continue
+            covered |= ids
+            special += _window_spend(window, daily)
     if special:
         log(f"реклама: дней с неразложенным остатком расхода: {special} "
             f"(разложен поровну на карточки кампаний)")
     return daily
+
+
+def _window_spend(window, daily):
+    """Расход одного сырого окна в daily; дней с остатком поровну → число."""
+    special = 0
+    for camp in window.get("кампании") or []:
+        campaign_nms = set()
+        for day in camp.get("days") or []:
+            date = (day.get("date") or "")[:10]
+            day_total = day.get("sum") or 0
+            app_sum = 0.0
+            for app in day.get("apps") or []:
+                nms_list = app.get("nms") or []
+                if not nms_list:
+                    continue
+                app_sum += app.get("sum") or 0
+                for nm in nms_list:
+                    nm_id = str(nm.get("nmId") or "")
+                    if nm_id and nm_id not in campaign_nms:
+                        campaign_nms.add(nm_id)
+                    if nm_id:
+                        daily[date][nm_id] += nm.get("sum") or 0
+            missing = day_total - app_sum
+            if missing > 0.01 and campaign_nms:
+                special += 1
+                share = missing / len(campaign_nms)
+                for nm_id in campaign_nms:
+                    daily[date][nm_id] += share
+    return special
 
 
 def ids_active_in_period(campaigns, earliest, today):
@@ -627,14 +736,18 @@ def fetch_ads(token):
     Ключ тот же (проверено 29.10.2026); fullstats по окнам ≤31 день,
     пачки дробятся до одиночек (multi-id WB отдаёт null). Сырой ответ
     пишется после каждого запроса — прерванный прогон продолжается.
-    Итог по дням → «реклама-по-дням.json»; свежий файл (младше
-    AD_TTL_HOURS) обрабатывается без запросов к WB.
+    Итог по дням → «реклама-по-дням.json». Свежий ПОЛНЫЙ файл (младше
+    AD_TTL_HOURS) обрабатывается без запросов к WB; неполный (есть
+    окна, которые WB не отдал) живёт только AD_TTL_INCOMPLETE_HOURS —
+    ближайший прогон его добирает.
     Возвращает {дата: {nmIdString: расход ₽}} или None (не вышло).
     """
     fresh = load_ad_daily()
     if fresh is not None and os.path.isfile(AD_DAILY_PATH):
         age_hours = (time.time() - os.path.getmtime(AD_DAILY_PATH)) / 3600
-        if age_hours < AD_TTL_HOURS:
+        ttl = (AD_TTL_HOURS if not load_ad_incomplete()
+               else AD_TTL_INCOMPLETE_HOURS)
+        if age_hours < ttl:
             log(f"реклама свежая ({age_hours:.1f} ч) — без запросов")
             return fresh
     earliest = earliest_sale_day()
@@ -654,21 +767,28 @@ def fetch_ads(token):
         return {}
     log(f"реклама: живых кампаний {len(live_ids)}, окна {earliest}…{today}")
     raw = load_ad_raw()
+    incomplete = []
     for begin, end in ad_windows(earliest, today):
         for i in range(0, len(live_ids), FULLSTATS_MAX_IDS):
             piece = live_ids[i:i + FULLSTATS_MAX_IDS]
             if not ad_group_stats(token, piece, begin, end, raw):
-                log(f"! реклама: окно {begin}…{end} неполное — "
-                    f"данные частичные, продолжится в следующий прогон")
+                incomplete.append(f"{begin}…{end}")
+    if incomplete:
+        log(f"! реклама: неполные окна {len(incomplete)} — "
+            f"дозагрузка в следующий прогон (файл живёт "
+            f"{AD_TTL_INCOMPLETE_HOURS:.0f} ч)")
     daily = ad_daily_from_raw(raw)
     with open(AD_DAILY_PATH, "w", encoding="utf-8") as file:
         json.dump({"срез": datetime.now().strftime("%Y-%m-%d %H:%M"),
                    "период": f"{earliest}…{today}",
+                   "неполные окна": incomplete,
                    "по дням": daily}, file, ensure_ascii=False, indent=1)
     total_sum = sum(sum(per_nm.values()) for per_nm in daily.values())
-    log(f"реклама: окон {len(raw)}, расход за период {total_sum:.2f} ₽")
+    log(f"реклама: окон {len(raw)}, расход за период {total_sum:.2f} ₽ "
+        f"({'полная' if not incomplete else 'НЕполная'})")
     print(f"Реклама получена: окон {len(raw)}, расход {total_sum:.0f} ₽ "
-          f"за {earliest}…{today}")
+          f"за {earliest}…{today}"
+          + (f"; НЕПОЛНО ({len(incomplete)} окон)" if incomplete else ""))
     return daily
 
 
@@ -712,16 +832,25 @@ def fetch_cards(token):
 
 
 def fetch_delta(token, state):
-    """Продажи и заказы с метки lastChangeDate. Возвращает True при успехе."""
+    """Продажи и заказы с метки lastChangeDate.
+
+    Возвращает (added_sales, added_orders, orders_ok). Если заказы
+    получлись пустыми (сеть/лимит) — метку НЕ сдвигаем и «сегодня уже
+    выгружалось» не включаем: следующий прогон доберёт и заказы, и
+    продажи заново (дедупликация не даст дублей). Сдвинуть метку при
+    потерянных заказах — навсегда пропустить их в выгрузку.
+    """
     params = {"dateFrom": state["last_change"]}
     sales_rows = api_get(ENDPOINT_SALES, params, token)
     if sales_rows is None:
         log("! продажи: попытки исчерпаны — выгрузка не состоялась")
-        return False
+        return None
     # заказы нужны для «Заказы шт» и выкупа; их метка своя, берём с запасом
     orders_rows = api_get(ENDPOINT_ORDERS, params, token)
     if orders_rows is None:
-        orders_rows = []
+        log("! заказы не получены — метка не сдвинута, доберутся "
+            "в следующий прогон")
+        return 0, 0, False
 
     seen = read_existing_keys()
     added_sales = write_jsonl(sales_rows, seen)
@@ -736,7 +865,7 @@ def fetch_delta(token, state):
     save_state(state)
     log(f"продажи +{added_sales}, заказы +{added_orders} "
         f"(метка до {new_max})")
-    return added_sales, added_orders
+    return added_sales, added_orders, True
 
 
 def main():
@@ -763,8 +892,7 @@ def main():
             sys.exit(1)
         ad_daily = fetch_ads(token)
         if ad_daily is not None:
-            with open(JSONL_PATH, encoding="utf-8") as file:
-                rows = [json.loads(line) for line in file]
+            rows = read_jsonl_rows()
             csv_rows, pairs = aggregate_csv_rows(rows, ad_daily)
             write_csv(csv_rows, load_map())
             print(f"CSV пересобран с рекламой: пар день×артикул {pairs}")
@@ -793,15 +921,14 @@ def main():
     log("прогон начат")
     mark_old_rows()
 
-    added = fetch_delta(token, state)
-    if not added:
+    added_sales, added_orders, orders_ok = fetch_delta(token, state)
+    if added_sales is None:
         log("! выгрузка не состоялась (API не ответил после попыток)")
         print("Выгрузка не удалась — детали в журнал-выгрузки.txt",
               file=sys.stderr)
         sys.exit(2)
 
-    with open(JSONL_PATH, encoding="utf-8") as file:
-        rows = [json.loads(line) for line in file]
+    rows = read_jsonl_rows()
     stock_ok = fetch_stocks(token)
     reports_n = fetch_reports(token)
     cards_subj = fetch_cards(token)
@@ -824,6 +951,10 @@ def main():
           f"карточки: "
           f"{'ок' if cards_subj is not None else 'кэш свежий/нет'}; "
           f"реклама: {'ок' if ad_daily is not None else 'не получена'}")
+    if not orders_ok:
+        log("! заказы в этом прогоне не получены — метка не сдвинута")
+        print("ВНИМАНИЕ: заказы не получены — следующий прогон доберёт их "
+              "заново (метка не сдвинута)", file=sys.stderr)
 
 
 if __name__ == "__main__":

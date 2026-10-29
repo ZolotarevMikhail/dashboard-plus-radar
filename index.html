@@ -564,15 +564,23 @@ const fmtN = n => (n==null||isNaN(n))?'—':Math.round(n).toLocaleString('ru-RU'
 const fmtPct = n => (n==null||isNaN(n))?'—':(n*100).toFixed(0)+'%';
 
 /* ---------- Состояние ---------- */
+// Безопасное чтение хранилища: битая метка в ключе — не пустая страница
+// (ревью 29.10: JSON.parse без обработки валить всю страницу), а запасное значение
+function lsJson(key, fallback){
+  try{
+    const v=JSON.parse(localStorage.getItem(key)||'null');
+    return v==null?fallback:v;
+  }catch(e){ return fallback; }
+}
 let state = {
   period:'custom',        // период всегда задаётся полями «с/по» (упрощение 27.10)
   anchor:new Date(),      // оставлено для совместимости прежних вызовов
   customFrom:null,        // arbitrary range: дата «от» (Date)
   customTo:null,          // arbitrary range: дата «до» (Date, не включительно)
   metric:'revenue',       // revenue|orders|profit
-  costs: JSON.parse(localStorage.getItem('wb_costs')||'{}'), // article -> себестоимость за шт
-  types: JSON.parse(localStorage.getItem('wb_types')||'{}'), // article -> тип товара (строка)
-  extraTypes: JSON.parse(localStorage.getItem('wb_extra_types')||'[]'), // дополнительные типы (массив строк)
+  costs: lsJson('wb_costs',{}), // article -> себестоимость за шт
+  types: lsJson('wb_types',{}), // article -> тип товара (строка)
+  extraTypes: lsJson('wb_extra_types',[]), // дополнительные типы (массив строк)
   artFilter:'all',         // 'all' или артикул конкретного товара (каскад тип→товар)
   goods:[],                // товары [{nmId,article,name,price,cost}]
   sourceName:null,         // имя последнего загруженного CSV-файла
@@ -733,7 +741,7 @@ function aggPeriod(from, to){
   return Object.values(byArt);
 }
 function totals(rows){
-  const t={revenue:0,commission:0,returns:0,adSpend:0,orders:0,qty:0,profit:0,stock:0};
+  const t={revenue:0,commission:0,returns:0,adSpend:0,adRevenue:0,orders:0,qty:0,profit:0,stock:0};
   rows.forEach(r=>{
     // себестоимость: из введённых значений, иначе демо-значение
     const cost = state.costs[r.article]!=null ? state.costs[r.article] : findDemoCost(r.article);
@@ -741,10 +749,15 @@ function totals(rows){
     // прибыль = выручка − комиссия WB − реклама − себестоимость
     // (возвраты вычитаются из выручки на этапе сбора данных, здесь — отдельная плита)
     r.profit = r.revenue - r.commission - r.adSpend - cogs;
+    if(r.adSpend>0) t.adRevenue+=r.revenue;   // выручка только рекламируемых товаров
     t.revenue+=r.revenue; t.commission+=r.commission; t.returns+=r.returns;
     t.adSpend+=r.adSpend; t.orders+=r.orders; t.qty+=r.qty; t.profit+=r.profit; t.stock+=r.stock;
   });
-  t.roi = t.adSpend>0 ? (t.revenue/t.adSpend) : null;
+  // ROI/ДРР ЧЕСТНО (ревью 29.10): делить ВСЮ выручку на рекламный расход —
+  // завышение: нерекламируемые товары приплетались к рекламе. Теперь
+  // знаменатели — выручка самих рекламируемых товаров.
+  t.roi = t.adSpend>0 ? (t.adRevenue/t.adSpend) : null;
+  t.adRev = t.adRevenue;
   t.margin = t.revenue>0 ? (t.profit/t.revenue) : null;
   return t;
 }
@@ -756,7 +769,6 @@ function renderKPI(){
   const rows=aggPeriod(from,to); const t=totals(rows);
   const p=prevRange();
   const prevRows=aggPeriod(p.from,p.to); const pt=totals(prevRows);
-  const dlt=(cur,prev)=> prev>0 ? (cur-prev)/prev : null;
   const dltN=(cur,prev)=> prev!==0 ? (cur-prev)/Math.abs(prev) : null;
   const delta=(cur,prev)=>{
     const d=dltN(cur,prev);
@@ -771,9 +783,9 @@ function renderKPI(){
     {lab:'Заказы', val:fmtN(t.orders), sub:delta(t.orders,pt.orders)},
     {lab:'Продажи, шт', val:fmtN(t.qty)+' шт', sub:delta(t.qty,pt.qty)},
     {lab:'Выкуп', val:t.orders>0?fmtPct(Math.min(1,t.qty/t.orders)):'—', sub:'продано из заказанных'},
-    {lab:'ROI рекламы', val:t.roi!=null?t.roi.toFixed(2)+'×':'—', sub:t.adSpend>0?`на ${fmtR(t.adSpend)} расходов`:'расходов нет', cls:t.roi!=null&&t.roi<1?'profit-neg':''},
+    {lab:'ROI рекламы', val:t.roi!=null?t.roi.toFixed(2)+'×':'—', sub:t.adSpend>0?`расход ${fmtR(t.adSpend)} · выручка рекламируемых ${fmtR(t.adRev)}`:'расходов нет', cls:t.roi!=null&&t.roi<5?'profit-neg':''},
     {lab:'Маржинальность', val:t.margin!=null?fmtPct(t.margin):'—', sub:'прибыль / выручка', cls:t.margin!=null&&t.margin<0?'profit-neg':''},
-    {lab:'ДРР', val:t.revenue>0?fmtPct(t.adSpend/t.revenue):'—', sub:'реклама / выручка', cls:((t.adSpend/t.revenue)>0.2)?'profit-neg':''},
+    {lab:'ДРР', val:t.adRevenue>0?fmtPct(t.adSpend/t.adRevenue):'—', sub:'реклама / выручка рекламируемых товаров', cls:((t.adRevenue>0)&&(t.adSpend/t.adRevenue)>0.2)?'profit-neg':''},
     {lab:'Остатки', val:fmtN(t.stock)+' шт', sub:'сумма по всем складам WB'},
     {lab:'Возвраты', val:fmtN(t.returns)+' шт', sub:(t.returns+t.orders)>0?`доля ${fmtPct(t.returns/(t.returns+t.orders))} заказов`:'за период'},
   ];
@@ -788,7 +800,7 @@ function renderAlerts(){
   const list=[];
   if(state.source==='csv'){
     const ing=state.lastIngest;
-    list.push({cls:'good', html:`Источник: <b>CSV-файл</b>${state.sourceName?` «${state.sourceName}»`:''}, загружено ${state.lastSync}. Строк: ${fmtN(ing?ing.rows:0)}, выручка файла ${fmtFull(ing?ing.revenue:0)}, продано ${fmtN(ing?ing.qty:0)} шт`});
+    list.push({cls:'good', html:`Источник: <b>CSV-файл</b>${state.sourceName?` «${escHtml(state.sourceName)}»`:''}, загружено ${state.lastSync}. Строк: ${fmtN(ing?ing.rows:0)}, выручка файла ${fmtFull(ing?ing.revenue:0)}, продано ${fmtN(ing?ing.qty:0)} шт`});
     // контрольные суммы по всем данным
     const rev=state.daily.reduce((s,d)=>s+Object.values(d.lines).reduce((s2,l)=>s2+l.revenue,0),0);
     const qty=state.daily.reduce((s,d)=>s+Object.values(d.lines).reduce((s2,l)=>s2+l.qty,0),0);
@@ -891,12 +903,14 @@ function renderInsights(){
     items.push({cls,html:`Выручка к прошлому периоду: <b>${word} ${Math.abs(d*100).toFixed(0)}%</b> (${fmtR(pt.revenue)} → ${fmtR(t.revenue)})`});
   }
 
-  // Реклама
+  // Реклама (пороги ЕДИНЫЕ с таблицей и рекомендациями, ревью 29.10:
+  // «норма от 1,5×» противоречила табличному красному при ROI<10):
+  // норма управленца — ДРР до 15% (ROI от ~6,7×); красный — ДРР выше 20%
   if(t.adSpend>0 && t.roi!=null){
-    const roi=t.roi;
-    if(roi<1) items.push({cls:'bad',html:`Реклама в минусе: ROI <b>${roi.toFixed(2)}×</b> — на ${fmtR(t.adSpend)} расходов возвращается ${fmtR(t.revenue)}. Пересмотри ставки или отключи слабые кампании`});
-    else if(roi<1.5) items.push({cls:'warn',html:`Реклама окупается слабо: ROI <b>${roi.toFixed(2)}×</b>. Норма — от 1.5×`});
-    else items.push({cls:'good',html:`Реклама окупается: ROI <b>${roi.toFixed(2)}×</b> (расход ${fmtR(t.adSpend)} → выручка ${fmtR(t.revenue)})`});
+    const drr=t.adSpend/t.adRev;
+    if(t.roi<5) items.push({cls:'bad',html:`Реклама съедает больше 20% выручки: ДРР <b>${fmtPct(drr)}</b> — на ${fmtR(t.adSpend)} расходов возвращается ${fmtR(t.adRev)} выручки рекламируемых товаров. Пересмотри ставки или отключи слабые кампании`});
+    else if(t.roi<6.67) items.push({cls:'warn',html:`Реклама окупается слабо: ДРР <b>${fmtPct(drr)}</b> выше нормы 15% (ROI ${t.roi.toFixed(2)}×)`});
+    else items.push({cls:'good',html:`Реклама окупается: ROI <b>${t.roi.toFixed(2)}×</b>, ДРР ${fmtPct(drr)} (расход ${fmtR(t.adSpend)} → выручка рекламируемых ${fmtR(t.adRev)})`});
   } else if(t.revenue>0 || t.orders>0){
     items.push({cls:'info',html:'Расходов на рекламу за период нет'});
   }
@@ -905,21 +919,21 @@ function renderInsights(){
   const byProfit=[...rows].filter(r=>r.qty>0).sort((a,b)=>b.profit-a.profit);
   if(byProfit.length){
     const top=byProfit[0];
-    items.push({cls:top.profit>=0?'good':'info',html:`Лучший товар: <b>${top.name}</b> — прибыль ${fmtR(top.profit)}`});
+    items.push({cls:top.profit>=0?'good':'info',html:`Лучший товар: <b>${escHtml(top.name)}</b> — прибыль ${fmtR(top.profit)}`});
   }
 
   // Убыточные товары
   const loss=byProfit.filter(r=>r.profit<0);
   if(loss.length){
-    const names=loss.slice(0,3).map(r=>`${r.name} (${fmtR(r.profit)})`).join(', ');
+    const names=loss.slice(0,3).map(r=>`${escHtml(r.name)} (${fmtR(r.profit)})`).join(', ');
     items.push({cls:'bad',html:`В минусе: <b>${names}</b>${loss.length>3?` и ещё ${loss.length-3}`:''}. Снизь рекламу или пересмотри цену`});
   }
 
   // Слабый ROI рекламы по товару (мягкий негатив — между «хорошо» и «плохо»)
   const byRoi=rows.filter(r=>r.adSpend>0 && r.qty>0).map(r=>({name:r.name,roi:r.revenue/r.adSpend,ad:r.adSpend})).sort((a,b)=>a.roi-b.roi);
-  if(byRoi.length && byRoi[0].roi<1.5){
+  if(byRoi.length && byRoi[0].roi<5){
     const w=byRoi[0];
-    items.push({cls:'warn',html:`Слабый ROI рекламы: <b>${w.name}</b> — ${w.roi.toFixed(2)}× на ${fmtR(w.adSpend)} расходов. Пересмотри ставки по этому товару`});
+    items.push({cls:'warn',html:`Слабый ROI рекламы: <b>${escHtml(w.name)}</b> — ${w.roi.toFixed(2)}× на ${fmtR(w.ad)} расходов. Пересмотри ставки по этому товару`});
   }
 
   // Возвраты
@@ -990,7 +1004,7 @@ function renderABC(){
   $('#abcHead').innerHTML='<tr>'+head.map((h,i)=>`<th class="${colCls[i]}">${h}</th>`).join('')+'</tr>';
   $('#abcBody').innerHTML = items.map(r=>`
     <tr>
-      <td><b>${r.article}</b> <span class="muted">${r.name}</span></td>
+      <td><b>${escHtml(r.article)}</b> <span class="muted">${escHtml(r.name)}</span></td>
       <td class="center"><span class="abc-badge ${r.abc.toLowerCase()}">${r.abc}</span></td>
       <td class="num">${fmtR(r.revenue)}</td>
       <td class="num tbl-hide-920">${fmtPct(r.share)}</td>
@@ -1014,43 +1028,46 @@ function renderABC(){
 function renderRecs(){
   const {items,days}=abcData();
   // общие итоги по товарам (r.profit уже посчитан в abcData)
-  const t={revenue:items.reduce((s,r)=>s+r.revenue,0),adSpend:items.reduce((s,r)=>s+r.adSpend,0)};
+  const t={revenue:items.reduce((s,r)=>s+r.revenue,0),
+           adSpend:items.reduce((s,r)=>s+r.adSpend,0),
+           adRev:items.reduce((s,r)=>s+(r.adSpend>0?r.revenue:0),0)};
   const recs=[];
   const add=(cls,what,why)=>recs.push({cls,html:`${what}<span class="why"><b>Почему:</b> ${why}</span>`});
 
-  // 1. ДРР выше 15% → проверить рекламные кампании
-  if(t.revenue>0 && t.adSpend>0 && t.adSpend/t.revenue>0.15){
+  // 1. ДРР выше 15% → проверить рекламные кампании (честная ДРР:
+  // к рекламе относятся только рекламируемые товары, как в KPI)
+  if(t.adRev>0 && t.adSpend>0 && t.adSpend/t.adRev>0.15){
     add('bad','Реклама съедает больше 15% выручки — проверить кампании',
-      `ДРР ${fmtPct(t.adSpend/t.revenue)} = реклама ${fmtR(t.adSpend)} ÷ выручка ${fmtR(t.revenue)}. Норма управленца: до 15%`);
+      `ДРР ${fmtPct(t.adSpend/t.adRev)} = реклама ${fmtR(t.adSpend)} ÷ выручка рекламируемых товаров ${fmtR(t.adRev)}. Норма управленца: до 15%`);
   }
 
   // 2. Товар класса A в минусе — главный убыток
   const badA=items.filter(r=>r.abc==='A'&&r.profit<0).sort((a,b)=>a.profit-b.profit);
   badA.slice(0,2).forEach(r=>{
-    add('bad',`${r.name}: товар-локомотив работает в минус — пересмотреть цену или рекламу`,
+    add('bad',`${escHtml(r.name)}: товар-локомотив работает в минус — пересмотреть цену или рекламу`,
       `Класс A (${fmtPct(r.abcShare)} выручки), прибыль <b>${fmtR(r.profit)}</b> = выручка ${fmtR(r.revenue)} − комиссия ${fmtR(r.commission)} − реклама ${fmtR(r.adSpend)} − себестоимость ${fmtR(r.qty*costOf(r))}`);
   });
 
   // 3. Застой: товар не продаётся дольше 90 дней при наличии остатка
   const frozen=items.filter(r=>r.cover!=null&&r.cover>90).sort((a,b)=>b.cover-a.cover);
   if(frozen.length){
-    const names=frozen.slice(0,3).map(r=>r.name).join(', ');
+    const names=frozen.slice(0,3).map(r=>escHtml(r.name)).join(', ');
     add('warn',`Застой остатков: ${names}${frozen.length>3?` и ещё ${frozen.length-3}`:''} — не докупать, распродавать`,
-      frozen.slice(0,3).map(r=>`«${r.name}»: продано ${fmtN(r.qty)} шт за ${days} дн (${r.dailyRate.toFixed(2)}/день), остаток ${fmtN(r.stock)} шт → хватит на <b>${fmtCover(r.cover)}</b>`).join('; '));
+      frozen.slice(0,3).map(r=>`«${escHtml(r.name)}»: продано ${fmtN(r.qty)} шт за ${days} дн (${r.dailyRate.toFixed(2)}/день), остаток ${fmtN(r.stock)} шт → хватит на <b>${fmtCover(r.cover)}</b>`).join('; '));
   }
 
   // 4. Скоро ноль: покрытие < 14 дней, остаток ещё есть → докупить
   const urgent=items.filter(r=>r.stock>0&&r.cover!=null&&r.cover<14).sort((a,b)=>a.cover-b.cover);
   urgent.slice(0,3).forEach(r=>{
     const order=Math.max(1,Math.round((30-r.cover)*r.dailyRate)); // докупить до 30 дней покрытия
-    add('warn',`${r.name}: остаток кончается через ${Math.round(r.cover)} дн — докупить ~${fmtN(order)} шт`,
+    add('warn',`${escHtml(r.name)}: остаток кончается через ${Math.round(r.cover)} дн — докупить ~${fmtN(order)} шт`,
       `Продаётся ${r.dailyRate.toFixed(1)} шт/день, в остатке ${fmtN(r.stock)} шт (покрытие ${Math.round(r.cover)} дн). ${fmtN(order)} шт продлевают до 30 дней`);
   });
 
   // 5. Товар с большой ДРР (>20%) — реклама не отдаёт
   const byDrr=items.filter(r=>r.revenue>0&&r.adSpend>0&&r.adSpend/r.revenue>0.20).map(r=>({name:r.name,drr:r.adSpend/r.revenue,ad:r.adSpend,rev:r.revenue})).sort((a,b)=>b.drr-a.drr);
   byDrr.slice(0,2).forEach(w=>{
-    add('warn',`${w.name}: рекламный расход на товар выше нормы — снизить ставку или проверить кампанию`,
+    add('warn',`${escHtml(w.name)}: рекламный расход на товар выше нормы — снизить ставку или проверить кампанию`,
       `ДРР ${fmtPct(w.drr)} = реклама ${fmtR(w.ad)} ÷ выручка ${fmtR(w.rev)}. Норма на товар: до 20%`);
   });
 
@@ -1058,7 +1075,7 @@ function renderRecs(){
   const byRet=items.filter(r=>(r.returns+r.orders)>0&&r.returns/(r.returns+r.orders)>0.10).sort((a,b)=>b.returns/(b.returns+b.orders)-a.returns/(a.returns+a.orders));
   byRet.slice(0,2).forEach(r=>{
     const sh=r.returns/(r.returns+r.orders);
-    add('warn',`${r.name}: возвраты выше нормы — проверить карточку и качество`,
+    add('warn',`${escHtml(r.name)}: возвраты выше нормы — проверить карточку и качество`,
       `${fmtN(r.returns)} возвратов из ${fmtN(r.returns+r.orders)} заказов = ${fmtPct(sh)}. Норма на WB: до 10%`);
   });
 
@@ -1105,8 +1122,6 @@ function renderDyn(){
   }
   const bw=f.pw/series.length;
   // столбцы
-  const col=state.metric==='profit'?'--series-1':'--series-1';
-  const negCol='var(--crit)';
   series.forEach((s,i)=>{
     const x=f.pad.l+bw*i+bw*0.18, w=bw*0.64;
     const h=f.ph*Math.abs(s.v)/f.max;
@@ -1241,7 +1256,7 @@ function renderPie(){
   shown.forEach((e,i)=>{
     const frac=e[1]/total; const dash=frac*C;
     const seg=el('circle',{cx,cy,r,fill:'none',stroke:`var(${PIE_COLORS[i%PIE_COLORS.length]})`,'stroke-width':sw,'stroke-dasharray':`${dash} ${C-dash}`,'stroke-dashoffset':-acc});
-    seg.addEventListener('mousemove',ev=>showTip(`<b>${e[0]}</b><br>${fmtR(e[1])} · ${(frac*100).toFixed(0)}% выручки`,ev.clientX,ev.clientY));
+    seg.addEventListener('mousemove',ev=>showTip(`<b>${escHtml(e[0])}</b><br>${fmtR(e[1])} · ${(frac*100).toFixed(0)}% выручки`,ev.clientX,ev.clientY));
     seg.addEventListener('mouseleave',hideTip);
     g.appendChild(seg); acc+=dash;
   });
@@ -1251,7 +1266,7 @@ function renderPie(){
   svg.appendChild(el('text',{class:'pie-center-sub',x:cx,y:cy-4},'выручка'));
   svg.appendChild(el('text',{class:'pie-center',x:cx,y:cy+14,fill:'var(--ink-2)',fontWeight:'600'},fmtN(entries.length)+' групп'));
   // легенда
-  $('#pieLegend').innerHTML=shown.map((e,i)=>`<li><i style="background:var(${PIE_COLORS[i%PIE_COLORS.length]})"></i>${e[0]}<span class="pc">${(e[1]/total*100).toFixed(0)}%</span></li>`).join('');
+  $('#pieLegend').innerHTML=shown.map((e,i)=>`<li><i style="background:var(${PIE_COLORS[i%PIE_COLORS.length]})"></i>${escHtml(e[0])}<span class="pc">${(e[1]/total*100).toFixed(0)}%</span></li>`).join('');
 }
 
 /* ---------- Таблица товаров ---------- */
@@ -1284,16 +1299,18 @@ function renderTable(){
     const cogs=cost*r.qty;
     const profit=r.revenue-r.commission-r.adSpend-cogs;
     const roi=r.adSpend>0?(r.revenue/r.adSpend):null;
-    const roiCls=roi==null?'':roi<10?'bad':roi<13?'warn':'good';
+    // ROI на товар vs ДРР товара: единые пороги (ДРР>20% bad ≈ ROI<5;
+    // 15–20% warn; раньше было <10/<13 — расходилось с нормой 15%)
+    const roiCls=roi==null?'':roi<5?'bad':roi<6.67?'warn':'good';
     const low=r.stock<20;
     const m=anyCost&&cost>0?stockMetrics(r,cost,days):null;
     const cells=[
-      `<td><b>${r.article}</b> <span class="muted">${r.name}</span></td>`,
+      `<td><b>${escHtml(r.article)}</b> <span class="muted">${escHtml(r.name)}</span></td>`,
       `<td class="num">${fmtN(r.qty)}</td>`,
       `<td class="num">${fmtR(r.revenue)}</td>`,
       `<td class="num tbl-hide-768">${fmtR(r.commission)}</td>`,
       `<td class="num tbl-hide-920">${fmtR(r.adSpend)}</td>`,
-      `<td class="num tbl-hide-560"><input class="cost" data-art="${r.article}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>`,
+      `<td class="num tbl-hide-560"><input class="cost" data-art="${escHtml(r.article)}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>`,
       `<td class="num tbl-hide-768">${fmtR(cogs)}</td>`,
       `<td class="num ${profit>=0?'profit-pos':'profit-neg'}">${fmtR(profit)}</td>`,
       `<td class="num tbl-hide-768">${roi!=null?`<span class="roi-pill ${roiCls}">${roi.toFixed(2)}×</span>`:'—'}</td>`
@@ -1346,6 +1363,9 @@ function renderAll(){
 
 /* ---------- CSV импорт/экспорт ---------- */
 function parseCSV(text){
+  // BOM маркер (EF BB BF) у CSV, сохранённых fetch-продажи.py: без среза
+  // первый заголовок читается как 	ufeffДата	 и сверка API молча живёт пустой
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
   // разделитель распознаём по заголовку: у русского Excel это «;», у кабинета WB — «,».
   // Счёт разделителей — ТОЛЬКО вне кавычек: запятые внутри «Выручка, ₽»
   // не должны перевешивать (RFC 4180: разделитель может сидеть в quoted-поле)
@@ -1474,6 +1494,13 @@ function importCSV(text, quiet){
   else if(costHeader && !costArts.size) toast('CSV загружен. Колонка себестоимости «'+costHeader+'» найдена, но значения пусты или 0 — прибыль без закупки.'+fillText+periodNote, true);
   else toast('CSV загружен: '+nGoods+' товаров. Колонка себестоимости не найдена — прибыль без закупки (нужна колонка «cost» или «себестоимость, ₽/шт»).'+fillText+periodNote, true);
 }
+/* Кавычки вокруг поля с запятой/кавычкой/переводом строки (RFC 4180):
+   раньше у «названия» кавычка открывалась и не закрывалась — файл в Excel
+   съезжал по столбцам на товарах с запятой в названии */
+function csvCell(v){
+  const s=String(v??'');
+  return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
 function exportCSV(){
   const {from,to}=periodRange();
   const rows=aggPeriod(from,to);
@@ -1483,7 +1510,7 @@ function exportCSV(){
     const cost=state.costs[r.article]!=null?state.costs[r.article]:findDemoCost(r.article);
     const cogs=cost*r.qty; const profit=r.revenue-r.commission-r.adSpend-cogs;
     const roi=r.adSpend>0?(r.revenue/r.adSpend):'';
-    out.push([r.article,'"'+r.name.replace(/"/g,'""')+'',r.qty,Math.round(r.revenue),Math.round(r.commission),r.returns,Math.round(r.adSpend),cost,Math.round(cogs),Math.round(profit),roi!==''?roi.toFixed(3):'',r.stock].join(','));
+    out.push([csvCell(r.article),csvCell(r.name),r.qty,Math.round(r.revenue),Math.round(r.commission),r.returns,Math.round(r.adSpend),cost,Math.round(cogs),Math.round(profit),roi!==''?roi.toFixed(3):'',r.stock].join(','));
   });
   const blob=new Blob(['﻿'+out.join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
@@ -1501,13 +1528,13 @@ const dlg=$('#settingsDlg');
 function renderCostTable(){
   const types=allTypes();
   const rows=state.goods.length?state.goods:DEMO_GOODS.map(g=>({...g}));
-  const opts=(cur)=>'<option value="">— без типа —</option>'+types.map(t=>`<option value="${t}" ${t===cur?'selected':''}>${t}</option>`).join('');
+  const opts=(cur)=>'<option value="">— без типа —</option>'+types.map(t=>`<option value="${escHtml(t)}" ${t===cur?'selected':''}>${escHtml(t)}</option>`).join('');
   $('#costBody').innerHTML = rows.map(g=>{
     const cost=state.costs[g.article]!=null?state.costs[g.article]:findDemoCost(g.article);
     const cur=state.types[g.article]!=null?state.types[g.article]:(DEMO_ART_TYPE[g.article]||'');
     return `<tr>
-      <td><b>${g.article}</b></td>
-      <td>${g.name||''}</td>
+      <td><b>${escHtml(g.article)}</b></td>
+      <td>${escHtml(g.name||'')}</td>
       <td><select data-art-type="${g.article}">${opts(cur)}</select></td>
       <td class="num"><input type="number" min="0" step="1" data-art-cost="${g.article}" value="${cost>0?Math.round(cost):''}" placeholder="0"></td>
     </tr>`;
@@ -1565,16 +1592,6 @@ const CSV_KEY_ALIASES = {
   cost: 'cost', 'себестоимость': 'cost', 'cost_per_unit': 'cost', 'себест': 'cost', 'закупка': 'cost', 'цена закупки': 'cost',
 };
 
-function normalizeRow(row){
-  const out = {};
-  row.forEach(cell => {
-    const k = String(cell || '').trim().toLowerCase().replace(/ё/g,'е');
-    const norm = CSV_KEY_ALIASES[k];
-    if(norm) out.__cur = norm;
-  });
-  return out;
-}
-
 // Читает CSV и возвращает [{vendorCode, nmId, barcode, cost}, ...]
 // Первая строка — заголовки (или распознаём по псевдонимам).
 function readCostsCSV(text){
@@ -1621,7 +1638,7 @@ function buildGoodsIndex(){
   const byVendor = new Map(), byNmId = new Map(), byBarcode = new Map();
   // Бар-коды берём из дополнительного кэша, если заказчик их положил туда раньше
   // (поле wb_barcodes — необязательное, заполняется отдельной кнопкой, если будет).
-  const barcodes = JSON.parse(localStorage.getItem('wb_barcodes') || '{}'); // article -> [barcode,...]
+  const barcodes = lsJson('wb_barcodes',{}); // article -> [barcode,...]
   (state.goods || []).forEach(g => {
     if(g.article) byVendor.set(String(g.article).trim(), g);
     if(g.nmId) byNmId.set(Number(g.nmId), g);
@@ -1658,7 +1675,7 @@ function renderImportReport(rep){
     html += `<br><span style="color:var(--warn,#c66)">Не сопоставлено (нет такого артикула/barcode/nmId в текущих товарах):</span>`;
     html += '<ul style="margin:4px 0 0 16px;max-height:120px;overflow:auto;font-size:12px">';
     rep.unmatched.slice(0, 50).forEach(u => {
-      html += `<li>строка ${u.row}: <code>${u.vendorCode||'—'}</code> / <code>${u.nmId||'—'}</code> / <code>${u.barcode||'—'}</code> → ${u.cost} ₽</li>`;
+      html += `<li>строка ${u.row}: <code>${escHtml(u.vendorCode||'—')}</code> / <code>${escHtml(u.nmId||'—')}</code> / <code>${escHtml(u.barcode||'—')}</code> → ${escHtml(u.cost)} ₽</li>`;
     });
     if(rep.unmatched.length > 50) html += `<li>…и ещё ${rep.unmatched.length - 50}</li>`;
     html += '</ul>';
@@ -1675,9 +1692,7 @@ function exportCostsCSV(){
   const lines = ['vendorCode,nmId,name,cost'];
   goods.forEach(g => {
     const c = state.costs[g.article] != null ? state.costs[g.article] : '';
-    // CSV: кавычки, если в поле есть запятая/кавычка
-    const esc = s => /[",\n]/.test(s) ? `"${String(s).replace(/"/g,'""')}"` : s;
-    lines.push([esc(g.article||''), esc(g.nmId||''), esc(g.name||''), c].join(','));
+    lines.push([csvCell(g.article||''), csvCell(g.nmId||''), csvCell(g.name||''), c].join(','));
   });
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1818,6 +1833,14 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape') goodPickerClose();
 $('#fromDate').addEventListener('change',e=>{ state.customFrom=e.target.value?new Date(e.target.value):null; renderAll(); });
 $('#toDate').addEventListener('change',e=>{ state.customTo=e.target.value?new Date(e.target.value):null; renderAll(); });
 $('#exportBtn').onclick=exportCSV;
+// кнопки над графиком «Динамика»: Выручка / Заказы / Прибыль — переключат
+// показатель (ревью 29.10: кнопки были нарисованы, клик не связан)
+$('#metricPick').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  state.metric=b.dataset.m||'revenue';
+  document.querySelectorAll('#metricPick button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  renderDyn();
+});
 $('#csvBtn').onclick=()=>$('#csvFile').click();
 // чтение файла: сначала пробуем UTF-8, если в тексте появились сломанные символы — файл был сохранён старым Excel в кодировке_cp1251, пробуем её
 function smartDecode(buf){
@@ -1836,22 +1859,23 @@ $('#pickCsvBtn').onclick=()=>$('#csvFile').click();
 async function importApiReplace(quiet){
   try{
     const res=await fetch('продажи-из-api.csv?t='+Date.now(),{cache:'no-store'});
-    if(!res.ok) return false;
-    const text=await res.text();
-    if(!text||!text.trim()) return false;
-    localStorage.removeItem('wb_csv_cache');
+    var text=res.ok ? await res.text() : '';
+  }catch(e){ return false; }   // file:// или сервер не запущен
+  if(!text||!text.trim()) return false;
+  // кэш удаляется ДО импорта (замена, а не долив) — но при битом файле
+  // старые данные возвращаем на место (ревью 29.10: удаление до парсинга
+  // стирало данные навсегда, если файл распарсить не удалось)
+  const backup=localStorage.getItem('wb_csv_cache');
+  localStorage.removeItem('wb_csv_cache');
+  try{
     state.sourceName='продажи-из-api.csv';
     importCSV(text, !!quiet);
     return true;
-  }catch(e){ return false; }            // file:// или сервер не запущен
-}
-// Сколько суток прошло с последнего дня в загруженных данных
-// (999 — дат нет вообще: считать устаревшими)
-function staleDailyDays(){
-  let newest='';
-  (state.daily||[]).forEach(d=>{ if(d.date>newest) newest=d.date; });
-  if(!newest) return 999;
-  return (Date.now()-new Date(newest+'T00:00:00').getTime())/86400000;
+  }catch(err){
+    if(backup!=null) localStorage.setItem('wb_csv_cache',backup);
+    state.sourceName=null;
+    throw err;   // наружу: кнопка покажет ошибку, авто-подхват — тост
+  }
 }
 $('#loadApiBtn').onclick=async()=>{
   try{
@@ -1898,17 +1922,19 @@ async function init(){
       if(c && c.daily && c.daily.length){ state.goods=c.goods||[]; state.daily=c.daily; state.stockByArticle=c.stockByArticle||{}; state.source='csv'; state.lastSync=c.lastSync||null; state.sourceName=c.sourceName||null; state.lastIngest=c.lastIngest||null; loaded=true; userCsv=c.sourceName!=='продажи-из-api.csv'; }
     }catch(e){ /* повреждённый кэш — показываем демо */ }
   }
-  // Автоподхват выгрузки API (27.10.2026 — урок пустого радара): пока
-  // данных нет совсем, или последний источник — сама выгрузка API
-  // (обновляем до свежего дня), или данные устарели (последний день
-  // старше 3 суток) — берём выгрузку из папки сами, не дожидаясь
-  // нажатия кнопки. Свой свежий CSV (реклама, себестоимость) молча
-  // не заменяем.
-  if(!loaded || !userCsv || staleDailyDays()>3){
-    if(await importApiReplace(true)){
-      loaded=true;
-      if(userCsv) toast('Показана свежая выгрузка API — предыдущий CSV заменён. Рекламные расходы из него вернуть: загрузите свой файл заново (кружок в шапке).',true);
-    }
+  // Автоподхват выгрузки API (27.10.2026 — урок пустого радара): берём
+  // выгрузку из папки сами, если данных нет ВООБЩЕ или последний источник
+  // — сама выгрузка API (обновляем до свежего дня). Свой CSV
+  // (реклама, себестоимость) НЕ заменяем даже старый (ревью 29.10:
+  // молчаливая замена «старше 3 суток» по датам данных теряла файл
+  // пользователя — например, старый квартал, загруженный для разбора).
+  if(!loaded || !userCsv){
+    try{
+      if(await importApiReplace(true)){
+        loaded=true;
+        if(userCsv) toast('Показана свежая выгрузка API — предыдущий CSV заменён. Рекламные расходы из него вернуть: загрузите свой файл заново (кружок в шапке).',true);
+      }
+    }catch(e){ toast('Свежая выгрузка не прочитана ('+e.message+') — показаны прежние данные',true); }
   }
   if(!loaded) loadDemo();
   await loadSnapshot();
@@ -2291,7 +2317,7 @@ function renderRadarTable(){
     const lab=b==='cheap'?'дешевле':b==='expensive'?'дороже':'наравне';
     const low = r.n<3;   // меньше 3 пар — доверять сравнению нельзя (практика мониторинга)
     return `<tr>
-      <td>${r.name}</td>
+      <td>${escHtml(r.name)}</td>
       <td class="num">${fmtR(r.mine)}</td>
       <td class="num tbl-hide-560">${fmtR(r.med)}</td>
       <td class="num tbl-hide-920">${fmtR(r.min)}</td>

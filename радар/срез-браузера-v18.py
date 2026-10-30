@@ -79,8 +79,16 @@ def load_pool(paths):
             raw_products = part.get("products") or part.get("rows") or []
             for raw in raw_products:
                 card = to_card(raw) if "sizes" in raw else raw
-                if card.get("nm_id") not in seen:
-                    seen.add(card["nm_id"])
+                nm_id = card.get("nm_id")
+                if nm_id is None:
+                    # раньше падал KeyError на card["nm_id"] — трейсбек
+                    # вместо понятного объяснения про формат выгрузки
+                    raise SystemExit(
+                        "В выгрузке строка без nm_id (поля строки: "
+                        f"{list(card)[:6]}). Скрипт разбирает выгрузки, "
+                        "где у карточки есть id/nm_id — проверь файл.")
+                if nm_id not in seen:
+                    seen.add(nm_id)
                     items.append(card)
     return items
 

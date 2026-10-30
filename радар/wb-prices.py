@@ -19,7 +19,6 @@ WB жёстко лимитирует ТОЛЬКО поисковый серве�
 import csv
 import json
 import os
-import re
 import ssl
 import sys
 import time
@@ -48,21 +47,36 @@ QUERIES = [
 ]
 QUERY_BY_Q = dict(QUERIES)
 
-# macOS-пакет Python без корневых сертификатов: фолбэк для публичного GET.
-SSL_CTX = ssl.create_default_context()
-try:
-    with urllib.request.urlopen("https://search.wb.ru", timeout=5,
-                                context=SSL_CTX):
-        pass
-except urllib.error.URLError as url_err:
-    if "certificate" in str(getattr(url_err, "reason", url_err)).lower():
-        SSL_CTX = ssl._create_unverified_context()
-except Exception:
-    pass
+# macOS-пакет Python без корневых сертификатов: фолбэк проверяется лениво,
+# при первом реальном запросе (см. _ssl_ctx) — модуль подключают через exec
+# (радар-сбор.py берёт из него QUERIES), и сеть дёргать при этом нельзя.
+
+_SSL_CTX = None
+
+
+def _ssl_ctx():
+    """Ленивый SSL-контекст: нормальный, при ошибке сертификатов — без
+    проверки. Реальный GET к WB именно здесь, а не при подключении модуля."""
+    global _SSL_CTX
+    if _SSL_CTX is None:
+        context = ssl.create_default_context()
+        try:
+            with urllib.request.urlopen("https://search.wb.ru", timeout=5,
+                                        context=context):
+                pass
+        except urllib.error.HTTPError:
+            pass  # WB ответил — сертификаты в порядке (403/429 — лимиты)
+        except urllib.error.URLError as url_err:
+            if "certificate" in str(getattr(url_err, "reason", url_err)).lower():
+                context = ssl._create_unverified_context()
+        except Exception:
+            pass
+        _SSL_CTX = context
+    return _SSL_CTX
 
 
 def _open(request):
-    return urllib.request.urlopen(request, timeout=25, context=SSL_CTX)
+    return urllib.request.urlopen(request, timeout=25, context=_ssl_ctx())
 
 
 # Origin/Referer как у настоящего сайта:
@@ -75,15 +89,6 @@ HEADERS = {
     "Origin": "https://www.wildberries.ru",
     "Referer": "https://www.wildberries.ru/",
     "Accept": "application/json",
-}
-MY_SUPPLIER_IDS = {34140}
-MY_BRANDS = {"sproots", "spr"}
-
-WEIGHT_RE = re.compile(
-    r"(\d+(?:[.,]\d+)?)\s*(кг|гр|г|грамм|килограмм)\b", re.I)
-JUNK_WORDS = {
-    "набор", "штук", "шт", "см", "кг", "мм",
-    "для", "и", "в", "на", "с", "ко", "из", "of",
 }
 
 
@@ -189,40 +194,46 @@ def fetch_cards(nm_ids, chunk=100):
     return products
 
 
-def weight_g(text):
-    """Вес в граммах из названия («300 г», «2 кг») — или None."""
-    matches = list(WEIGHT_RE.finditer(text.lower()))
-    if not matches:
-        return None
-    grams = float(matches[0].group(1).replace(",", "."))
-    if matches[0].group(2).lower().startswith("к"):
-        grams *= 1000
-    return round(grams)
+# Правила аналогов и «наш/чужой» — единая точка sbor-iz-brauzera.py:
+# раньше здесь жили свои (вес ±10% / ≥5 слов, бренд SPR у перекупов
+# считался «нашим») — цифры срезов двух путей расходились.
+_RULES = None
 
 
-def tokens(text):
-    return {
-        word.lower() for word
-        in re.sub(r"[^\wа-яёА-ЯЁ]", " ", text).split()
-        if len(word) > 2
-    } - JUNK_WORDS
+def _brauzera_rules():
+    """Подключить sbor-iz-brauzera.py через exec (как радар-сбор.py)."""
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "sbor-iz-brauzera.py")
+    namespace = {"__file__": path}
+    with open(path, encoding="utf-8") as file:
+        source = file.read()
+    source = source.replace('if __name__ == "__main__":\n    main()', "")
+    exec(compile(source, path, "exec"), namespace)
+    return namespace
+
+
+def _rules():
+    global _RULES
+    if _RULES is None:
+        _RULES = _brauzera_rules()
+    return _RULES
 
 
 def is_analog(my_name, comp_name):
-    """Аналоги: либо совпадает вес (±10%), либо много общих слов."""
-    my_weight, comp_weight = weight_g(my_name), weight_g(comp_name)
-    if my_weight and comp_weight:
-        ratio = abs(my_weight - comp_weight) / max(my_weight, comp_weight)
-        return ratio <= 0.10
-    common = tokens(my_name) & tokens(comp_name)
-    return len(common) >= 5
+    """Те же правила аналогов, что в браузерном сборщике."""
+    return _rules()["is_analog"](my_name, comp_name)
 
 
 def is_mine(product):
-    return (
-        product["supplier_id"] in MY_SUPPLIER_IDS
-        or (product["brand"] or "").lower() in MY_BRANDS
-    )
+    """Наши = только наш продавец: карточки бренда SPR у перекупов —
+    не наши и не конкуренты (см. sbor-iz-brauzera.py)."""
+    return _rules()["is_mine"](product)
+
+
+def is_rival_brand(product):
+    """Бренд из MY_BRANDS, но не наш продавец (перекуп): из конкурентов
+    срезается — цена чужого перекупа SPR ничего не говорит о рынке."""
+    return (product.get("brand") or "").lower() in _rules()["MY_BRANDS"]
 
 
 def build_competitor_report(found, items):
@@ -239,7 +250,8 @@ def build_competitor_report(found, items):
             product for product in query_items if is_mine(product)]
         query_comp = [
             product for product in query_items
-            if not is_mine(product) and product["price_final_rub"]]
+            if not is_mine(product) and not is_rival_brand(product)
+            and product["price_final_rub"]]
         for my_product in query_mine:
             for comp_product in query_comp:
                 pair = (my_product["nm_id"], comp_product["nm_id"])
@@ -317,7 +329,7 @@ def main():
           f"из них SPROOTS: {len(mine)}")
     if not mine:
         print("Наши товары не найдены — "
-              "проверь бренд/продавца в MY_SUPPLIER_IDS.")
+              "проверь продавца в MY_SUPPLIER_IDS (sbor-iz-brauzera.py).")
         if not items:
             print("Выдача пуста и запросы блокируются (403/498) — "
                   "запасной маршрут: прогретая вкладка wildberries.ru "

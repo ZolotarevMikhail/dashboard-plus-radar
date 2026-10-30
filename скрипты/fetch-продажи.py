@@ -320,6 +320,10 @@ def aggregate_csv_rows(sales_rows, ad_daily=None):
         is_return = (row.get("saleID") or "").startswith("R")
         bucket = agg[(day, article)]
         if row.get("_t") == "O":
+            # Отменённая корзина не реальный заказ: isCancel=true,
+            # иначе плитки «Заказы» и «Выкуп» лгут (знаменатель врёт).
+            if row.get("isCancel"):
+                continue
             bucket["orders"] += 1
             continue
         if is_return:

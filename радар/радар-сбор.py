@@ -26,7 +26,7 @@ wb-open-search-via-site-proxy).
 
 Запуск: python3 радар-сбор.py [--форс]
   --форс  — игнорировать охрану «моложе 3 дней» (разовый/проверочный прогон)
-launchd: RunAtLoad + StartCalendarInterval 9:00 ежедневно — охрана сама
+launchd: RunAtLoad + StartInterval 21600 (каждые 6 часов) — охрана сама
 решает, пора ли срезу (раз в 3 дня).
 """
 import json
@@ -293,7 +293,8 @@ def collect(tab, queries):
 def archive_old():
     """Старые файлы радара — в снапшот-архив (копия, с датой в имени)."""
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
-    day = datetime.now().strftime("%Y-%m-%d")
+    # время в имени: два прогона в один день перезаписывали архивную копию
+    day = datetime.now().strftime("%Y-%m-%d-%H%M")
     for name in FILES_NAMES:
         path = os.path.join(OUT, name)
         if os.path.isfile(path):
@@ -372,7 +373,7 @@ def main():
     rows, top, pairs_before = rules["build_rows"](mine, competitors)
     rules["save_files"](mine, rows, top, stamp)
 
-    copy_to_dashboard()
+    dashboard_copy = copy_to_dashboard()
     state = load_state()
     state["last_ok"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     save_state(state)
@@ -384,7 +385,7 @@ def main():
           f"{int((datetime.now() - started).total_seconds())} с: "
           f"карточек {len(items)}, наших {len(mine)}, пар "
           f"{len(rows)} (топ-{rules['MAX_SUPPLIERS']}); "
-          f"копия в дашборд: {os.path.basename(copy_to_dashboard())}")
+          f"копия в дашборд: {os.path.basename(dashboard_copy)}")
     return 0
 
 
